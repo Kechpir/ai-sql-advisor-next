@@ -24,32 +24,46 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [saveName, setSaveName] = useState('')
 
+  // toasts
+  const [note, setNote] = useState<{type:'ok'|'warn'|'err', text:string} | null>(null)
+  const toast = (type:'ok'|'warn'|'err', text:string) => { setNote({type,text}); setTimeout(()=>setNote(null), 2200) }
+
   const onGenerate = async () => {
-    if (!schemaJson) return alert('Сначала загрузите схему.')
-    if (!nl.trim()) return alert('Введите задачу.')
+    if (!schemaJson) return toast('warn','Сначала загрузите схему')
+    if (!nl.trim()) return toast('warn','Введите задачу')
     setLoading(true)
     try {
       const data = await generateSql(nl.trim(), schemaJson, 'postgres')
-      if (data.blocked) return alert('🚫 Запрос заблокирован: '+data.reason)
+      if (data.blocked) { toast('err','🚫 Запрос заблокирован политикой'); return }
       const sql = String(data.sql || '')
       setGeneratedSql(explain ? annotate(sql) : sql)
-    } catch (e:any) { alert('Ошибка: '+e.message) }
+    } catch (e:any) { console.error(e); toast('err','Ошибка генерации') }
     finally { setLoading(false) }
   }
 
   const onSave = async () => {
-    if (!schemaJson) return alert('Нет схемы для сохранения')
-    if (!saveName.trim()) return alert('Введите имя')
-    try { 
+    if (!schemaJson) return toast('warn','Нет схемы для сохранения')
+    if (!saveName.trim()) return toast('warn','Введите имя')
+    try {
       await saveSchema(saveName.trim(), schemaJson)
-      alert(`✅ Схема «${saveName.trim()}» сохранена`)
+      toast('ok', `Сохранено: «${saveName.trim()}» ✅`)
       setSaveName('')
-    } catch (e:any) { alert('Ошибка: '+e.message) }
+    } catch (e:any) { console.error(e); toast('err','Ошибка сохранения') }
   }
 
   return (
     <div>
       <div className="page-wrap">
+        {/* Toast */}
+        {note && (
+          <div style={{position:'fixed',right:16,bottom:16,zIndex:50,
+            background: note.type==='ok' ? '#10b98120' : note.type==='warn' ? '#f59e0b20' : '#ef444420',
+            border:`1px solid ${note.type==='ok' ? '#10b98160' : note.type==='warn' ? '#f59e0b60' : '#ef444460'}`,
+            color:'#e5e7eb',padding:'10px 12px',borderRadius:10}}>
+            {note.text}
+          </div>
+        )}
+
         <h1 style={{margin:0}}>🧠 AI SQL Advisor</h1>
         <p style={{margin:'6px 0 20px',opacity:.8}}>Генерация SQL и управление схемами.</p>
 
@@ -61,7 +75,7 @@ export default function Home() {
         {tab==='scan' && (
           <div style={block}>
             <h3>Подключение и загрузка схемы</h3>
-            <DbConnect onLoaded={setSchemaJson}/>
+            <DbConnect onLoaded={setSchemaJson} onToast={toast} />
 
             {schemaJson && (
               <>
@@ -97,10 +111,12 @@ export default function Home() {
               rows={5}
               style={input}
             />
-            <div style={{display:'flex',alignItems:'center',gap:8,marginTop:10,fontSize:14,opacity:.9}}>
+            {/* чекбокс одной строкой, без переноса */}
+            <div style={{display:'inline-flex',alignItems:'center',gap:8,marginTop:10,fontSize:14,opacity:.9,whiteSpace:'nowrap'}}>
               <input id="explain" type="checkbox" checked={explain} onChange={e=>setExplain(e.target.checked)} />
-              <label htmlFor="explain">Пояснить SQL</label>
+              <label htmlFor="explain" style={{cursor:'pointer',margin:0}}>Пояснить SQL</label>
             </div>
+
             <div style={{display:'flex',gap:8,marginTop:10}}>
               <button onClick={onGenerate} disabled={loading} style={btnMain}>
                 {loading ? '⏳ Генерируем…' : 'Сгенерировать'}
@@ -111,7 +127,11 @@ export default function Home() {
           </div>
         )}
 
-        {tab==='saved' && <div style={block}><SchemasManager schemaJson={schemaJson} setSchemaJson={setSchemaJson}/></div>}
+        {tab==='saved' && (
+          <div style={block}>
+            <SchemasManager schemaJson={schemaJson} setSchemaJson={setSchemaJson}/>
+          </div>
+        )}
       </div>
     </div>
   )
