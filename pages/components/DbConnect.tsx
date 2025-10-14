@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { fetchSchema } from '../../lib/api'
 
 export default function DbConnect({ onLoaded }: { onLoaded: (schema: any) => void }) {
   const [dbUrl, setDbUrl] = useState('')
@@ -9,10 +10,11 @@ export default function DbConnect({ onLoaded }: { onLoaded: (schema: any) => voi
     if (!dbUrl.trim()) return alert('Введите строку подключения')
     setLoading(true)
     try {
-      await new Promise(r=>setTimeout(r,1000)) // заглушка до /fetch_schema
-      onLoaded({ tables: {}, countTables: 0 })
-    } catch (e) {
-      alert('Ошибка: '+e)
+      const data = await fetchSchema(dbUrl, schemaName)
+      onLoaded(data)
+      alert('✅ Схема загружена')
+    } catch (e:any) {
+      alert('Ошибка: ' + e.message)
     } finally {
       setLoading(false)
     }
@@ -26,9 +28,9 @@ export default function DbConnect({ onLoaded }: { onLoaded: (schema: any) => voi
       <input placeholder="public" value={schemaName}
         onChange={e=>setSchemaName(e.target.value)}
         style={{background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:12,padding:'10px 12px'}} />
-      <button onClick={handleFetch}
+      <button onClick={handleFetch} disabled={loading}
         style={{background:'linear-gradient(90deg,#22d3ee,#3b82f6)',color:'#0b1220',fontWeight:700,border:'none',borderRadius:12,padding:'10px 14px',cursor:'pointer'}}>
-        {loading?'Загрузка...':'🔎 Загрузить схему'}
+        {loading?'⏳ Загрузка...':'🔎 Загрузить схему'}
       </button>
     </div>
   )
