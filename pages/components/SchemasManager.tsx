@@ -1,10 +1,40 @@
 import { useState, useEffect } from 'react'
 import { listSchemas, getSchema, diffSchema, updateSchema, deleteSchema, saveSchema } from '../../lib/api'
 
+type Toast = {type:'ok'|'warn'|'err', text:string} | null
+
+function ConfirmModal({open, title, text, onCancel, onOk}:{open:boolean,title:string,text:string,onCancel:()=>void,onOk:()=>void}) {
+  if (!open) return null
+  return (
+    <div style={{
+      position:'fixed', inset:0, background:'rgba(0,0,0,.45)', display:'grid', placeItems:'center', zIndex:100
+    }}>
+      <div style={{
+        width:420, maxWidth:'92vw',
+        background:'#0f172a', color:'#e5e7eb',
+        border:'1px solid #334155', borderRadius:12, padding:18, boxShadow:'0 10px 40px rgba(0,0,0,.5)'
+      }}>
+        <h3 style={{margin:'0 0 6px'}}>{title}</h3>
+        <p style={{margin:'0 0 14px',opacity:.85}}>{text}</p>
+        <div style={{display:'flex',justifyContent:'flex-end',gap:8}}>
+          <button onClick={onCancel} style={btnGhost}>Отмена</button>
+          <button onClick={onOk} style={btnDanger}>Да, выполнить</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
   const [items, setItems] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [note, setNote] = useState<{type:'ok'|'warn'|'err', text:string} | null>(null)
+  const [note, setNote] = useState<Toast>(null)
+
+  // modal state
+  const [confirmOpen, setConfirmOpen] = useState(false)
+  const [confirmTitle, setConfirmTitle] = useState('')
+  const [confirmText, setConfirmText] = useState('')
+  const [confirmAction, setConfirmAction] = useState<null | (()=>Promise<void>)>(null)
 
   const toast = (type:'ok'|'warn'|'err', text:string) => {
     setNote({ type, text })
@@ -16,7 +46,7 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
     try {
       const r = await listSchemas()
       setItems(r.items || [])
-      toast('ok','Список обновлён')
+      // не спамим «Список обновлён» каждый раз
     } catch (e:any) {
       toast('err','Ошибка загрузки списка')
       console.error(e)
@@ -30,10 +60,7 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
       const r = await getSchema(name)
       setSchemaJson(r.schema)
       toast('ok', `«${name}» подгружена`)
-    } catch (e:any) {
-      toast('err','Не удалось подгрузить')
-      console.error(e)
-    }
+    } catch (e:any) { toast('err','Не удалось подгрузить'); console.error(e) }
   }
 
   const handleDiff = async (name:string) => {
@@ -42,33 +69,33 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
       const r = await diffSchema(name, schemaJson)
       console.log('DIFF', r.diff)
       toast('ok','Diff рассчитан (см. консоль)')
-    } catch (e:any) {
-      toast('err','Ошибка diff')
-      console.error(e)
-    }
+    } catch (e:any) { toast('err','Ошибка diff'); console.error(e) }
   }
 
-  const handleUpdate = async (name:string) => {
+  const ask = (title:string, text:string, action:()=>Promise<void>) => {
+    setConfirmTitle(title); setConfirmText(text); setConfirmAction(()=>action); setConfirmOpen(true)
+  }
+
+  const handleUpdate = (name:string) => {
     if (!schemaJson) return toast('warn','Сначала загрузите схему')
-    try {
-      const r = await updateSchema(name, schemaJson)
-      toast('ok', r.reason || 'Обновлено')
-      refresh()
-    } catch (e:any) {
-      toast('err','Ошибка обновления')
-      console.error(e)
-    }
+    ask('Обновить сохранённую схему?',
+        `Схема «${name}» будет перезаписана текущей (из правого блока).`,
+        async () => {
+          try {
+            const r = await updateSchema(name, schemaJson)
+            toast('ok', r.reason || 'Обновлено')
+            refresh()
+          } catch (e:any) { toast('err','Ошибка обновления'); console.error(e) }
+        })
   }
 
-  const handleDelete = async (name:string) => {
-    try {
-      await deleteSchema(name)
-      toast('ok', `Удалено: ${name}`)
-      refresh()
-    } catch (e:any) {
-      toast('err','Ошибка удаления')
-      console.error(e)
-    }
+  const handleDelete = (name:string) => {
+    ask('Удалить сохранённую схему?',
+        `Действие безвозвратно удалит «${name}».`,
+        async () => {
+          try { await deleteSchema(name); toast('ok', `Удалено: ${name}`); refresh() }
+          catch (e:any) { toast('err','Ошибка удаления'); console.error(e) }
+        })
   }
 
   const handleRename = async (oldName:string) => {
@@ -80,10 +107,7 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
       await deleteSchema(oldName)
       toast('ok', `Переименовано в ${newN}`)
       refresh()
-    } catch (e:any) {
-      toast('err','Ошибка переименования')
-      console.error(e)
-    }
+    } catch (e:any) { toast('err','Ошибка переименования'); console.error(e) }
   }
 
   return (
@@ -99,6 +123,18 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
           {note.text}
         </div>
       )}
+
+      {/* Confirm modal */}
+      <ConfirmModal
+        open={confirmOpen}
+        title={confirmTitle}
+        text={confirmText}
+        onCancel={()=>{ setConfirmOpen(false); setConfirmAction(null) }}
+        onOk={async()=>{
+          try { await (confirmAction?.()); }
+          finally { setConfirmOpen(false); setConfirmAction(null) }
+        }}
+      />
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
         <h3 style={{margin:'0 0 10px'}}>💾 Сохранённые базы</h3>
@@ -132,3 +168,5 @@ const btn = {
   padding:'6px 10px', cursor:'pointer', fontSize:13
 }
 const btnDel = {...btn, border:'1px solid #b91c1c', color:'#fca5a5'}
+const btnGhost = {...btn, background:'#0f172a'}
+const btnDanger = {...btn, background:'linear-gradient(90deg,#fb7185,#ef4444)', color:'#0b1220', border:'none'}
