@@ -20,12 +20,7 @@ export default function AuthPage() {
   const [newPass, setNewPass] = useState('')
   const [newPass2, setNewPass2] = useState('')
 
-  // если уже авторизован — в кабинет
-  useEffect(()=>{
-    try{ if(localStorage.getItem('jwt')) router.replace('/') }catch{}
-  },[router])
-
-  // парсим #access_token / ?access_token от Supabase (OAuth / recovery)
+  // 1) СНАЧАЛА разбираем токены из URL (recovery / oauth)
   useEffect(()=>{
     if (typeof window==='undefined') return
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
@@ -34,20 +29,34 @@ export default function AuthPage() {
     const type  = (hash.get('type') || qs.get('type') || '').toLowerCase()
 
     if (!token) return
-    // recovery: показываем форму смены пароля
+
+    // a) Recovery: показываем форму смены пароля и чистим старый jwt, чтобы защитник не редиректил
     if (type === 'recovery') {
+      try { localStorage.removeItem('jwt') } catch {}
       setRecoveryToken(token)
       setTab('reset')
       setMsg('Введите новый пароль и подтвердите.')
       return
     }
-    // обычный OAuth-возврат: сохраняем JWT и в кабинет
+
+    // b) Обычный OAuth-возврат: сохраняем JWT и в кабинет
     try {
       localStorage.setItem('jwt', token)
       router.replace('/')
     } catch (e) {
       console.error(e)
     }
+  },[router])
+
+  // 2) Редирект на / если УЖЕ залогинен (но только если это НЕ recovery-сценарий)
+  useEffect(()=>{
+    try{
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const qs   = new URLSearchParams(window.location.search)
+      const t    = (hash.get('type') || qs.get('type') || '').toLowerCase()
+      if (t === 'recovery') return
+      if (localStorage.getItem('jwt')) router.replace('/')
+    }catch{}
   },[router])
 
   async function req(path:string, body:any) {
@@ -82,10 +91,11 @@ export default function AuthPage() {
     finally{ setLoading(false) }
   }
 
+  // Ссылка для сброса: ВЕДЁМ НА /auth, чтобы тут поймать type=recovery
   async function sendResetLink() {
     setLoading(true); setMsg('')
     try {
-      const r = await req('recover',{email,redirect_to: SITE})
+      const r = await req('recover',{email,redirect_to: `${SITE}/auth`})
       if(!r.ok) throw new Error(await r.text())
       setMsg('📨 Ссылка для сброса пароля отправлена.')
     } catch(e:any){ setMsg('Ошибка сброса: '+e.message) }
@@ -111,7 +121,7 @@ export default function AuthPage() {
       if(!r.ok) throw new Error(j.error_description||j.message||'Ошибка смены пароля')
       // пароль обновлён: сохраняем токен и в кабинет
       localStorage.setItem('jwt', recoveryToken)
-      setMsg('✅ Пароль обновлён'); 
+      setMsg('✅ Пароль обновлён')
       router.replace('/')
     } catch(e:any){ setMsg(e.message) }
     finally{ setLoading(false) }
@@ -147,7 +157,7 @@ export default function AuthPage() {
 
           <a href={GOOGLE_URL} style={googleBtn} target="_self" rel="noopener">
             <svg style={{width:18,height:18}} viewBox="0 0 48 48" aria-hidden="true">
-              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.9 0-12.5-5.6-12.5-12.5S17.1 11 24 11c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 12.3 3 3 12.3 3 24s9.3 21 21 21c10.5 0 20-7.6 20-21 0-1.3-.1-2.6-.4-3.5z"/>
+              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.9 0-12.5-5.6-12.5-12.5S17.1 11 24 11c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
               <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.9 16.5 19 14 24 14c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
               <path fill="#4CAF50" d="M24 45c5.4 0 10.3-1.8 14.1-4.9l-6.5-5.4C29.6 36.5 26.9 37.5 24 37.5c-5.2 0-9.6-3.3-11.2-8.1l-6.6 5.1C8.9 41.1 15.9 45 24 45z"/>
               <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.2 3.4-3.8 6.1-7 7.6l6.5 5.4C38.3 39.2 42 32.6 42 24c0-1.3-.1-2.6-.4-3.5z"/>
