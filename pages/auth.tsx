@@ -25,7 +25,7 @@ export default function AuthPage() {
     if (typeof window==='undefined') return
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
     const qs   = new URLSearchParams(window.location.search)
-    const token = hash.get('access_token') || qs.get('access_token')
+    const token = hash.get('access_token') || qs.get('access_token') || new URLSearchParams(window.location.search).get('access_token')
     const type  = (hash.get('type') || qs.get('type') || '').toLowerCase()
 
     if (!token) return
