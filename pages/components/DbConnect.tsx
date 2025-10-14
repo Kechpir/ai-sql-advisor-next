@@ -27,17 +27,42 @@ export default function DbConnect({
     }
   }
 
-  const inputStyle = {background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:12,padding:'10px 12px'} as const
+  const inputStyle = {
+    background: '#0b1220',
+    color: '#e5e7eb',
+    border: '1px solid #1f2937',
+    borderRadius: 12,
+    padding: '10px 12px',
+  } as const
 
   return (
-    <div style={{display:'grid',gap:10}}>
-      <input placeholder="postgresql://user:pass@host/db?sslmode=require"
-        value={dbUrl} onChange={e=>setDbUrl(e.target.value)} style={inputStyle} />
-      <input placeholder="public" value={schemaName}
-        onChange={e=>setSchemaName(e.target.value)} style={inputStyle} />
-      <button onClick={handleFetch} disabled={loading}
-        style={{background:'linear-gradient(90deg,#22d3ee,#3b82f6)',color:'#0b1220',fontWeight:700,border:'none',borderRadius:12,padding:'10px 14px',cursor:'pointer'}}>
-        {loading?'⏳ Загрузка...':'🔎 Загрузить схему'}
+    <div style={{ display: 'grid', gap: 10 }}>
+      <input
+        placeholder="postgresql://user:pass@host/db?sslmode=require"
+        value={dbUrl}
+        onChange={(e) => setDbUrl(e.target.value)}
+        style={inputStyle}
+      />
+      <input
+        placeholder="public"
+        value={schemaName}
+        onChange={(e) => setSchemaName(e.target.value)}
+        style={inputStyle}
+      />
+      <button
+        onClick={handleFetch}
+        disabled={loading}
+        style={{
+          background: 'linear-gradient(90deg,#22d3ee,#3b82f6)',
+          color: '#0b1220',
+          fontWeight: 700,
+          border: 'none',
+          borderRadius: 12,
+          padding: '10px 14px',
+          cursor: 'pointer',
+        }}
+      >
+        {loading ? '⏳ Загрузка...' : '🔎 Загрузить схему'}
       </button>
     </div>
   )
