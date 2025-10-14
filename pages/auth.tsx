@@ -93,29 +93,17 @@ export default function AuthPage() {
   )
 }
 
-/* === typed styles === */
-const wrap: CSSProperties = {
-  display:'flex', justifyContent:'center', alignItems:'center',
-  height:'100vh', background:'#0b1220'
-}
+/* typed styles */
+const wrap: CSSProperties = { display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', background:'#0b1220' }
 const card: CSSProperties = {
   background:'#0f172a', padding:30, borderRadius:12, border:'1px solid #1f2937',
-  color:'#e5e7eb', width:300, textAlign:'center' as const
+  color:'#e5e7eb', width:300, textAlign: 'center' as CSSProperties['textAlign']
 }
 const tabs: CSSProperties = { display:'flex', gap:8, marginBottom:12, justifyContent:'center' }
 const tabBtn = (active:boolean): CSSProperties => ({
   padding:'6px 10px', borderRadius:8, border:'1px solid #1f2937',
   background: active ? '#111827' : '#0b1220', color:'#e5e7eb', cursor:'pointer'
 })
-const input: CSSProperties = {
-  width:'100%', marginBottom:10, borderRadius:8, border:'1px solid #1f2937',
-  background:'#0b1220', color:'#e5e7eb', padding:'8px 10px'
-}
-const btn: CSSProperties = {
-  width:'100%', marginTop:4, padding:'10px', borderRadius:8, border:'none',
-  background:'linear-gradient(90deg,#22d3ee,#3b82f6)', color:'#0b1220', fontWeight:700, cursor:'pointer'
-}
-const gBtn: CSSProperties = {
-  display:'inline-flex', alignItems:'center', gap:8, marginTop:10,
-  padding:'8px 14px', background:'#fff', color:'#111827', borderRadius:8, textDecoration:'none', fontWeight:600
-}
+const input: CSSProperties = { width:'100%', marginBottom:10, borderRadius:8, border:'1px solid #1f2937', background:'#0b1220', color:'#e5e7eb', padding:'8px 10px' }
+const btn: CSSProperties = { width:'100%', marginTop:4, padding:'10px', borderRadius:8, border:'none', background:'linear-gradient(90deg,#22d3ee,#3b82f6)', color:'#0b1220', fontWeight:700, cursor:'pointer' }
+const gBtn: CSSProperties = { display:'inline-flex', alignItems:'center', gap:8, marginTop:10, padding:'8px 14px', background:'#fff', color:'#111827', borderRadius:8, textDecoration:'none', fontWeight:600 }

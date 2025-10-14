@@ -7,14 +7,13 @@ export default function DbConnect({ onLoaded }: { onLoaded: (schema: any) => voi
   const [loading, setLoading] = useState(false)
 
   const handleFetch = async () => {
-    if (!dbUrl.trim()) return alert('Введите строку подключения')
+    if (!dbUrl.trim()) return
     setLoading(true)
     try {
       const data = await fetchSchema(dbUrl, schemaName)
-      onLoaded(data)
-      alert('✅ Схема загружена')
-    } catch (e:any) {
-      alert('Ошибка: ' + e.message)
+      onLoaded(data) // без alert — сверху появится бэйдж «Схема загружена»
+    } catch (e) {
+      console.error('fetch_schema error', e) // без alert
     } finally {
       setLoading(false)
     }
