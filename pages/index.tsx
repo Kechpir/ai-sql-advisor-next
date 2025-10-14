@@ -37,7 +37,6 @@ export default function Home() {
         const sql = String(data.sql || '')
         setGeneratedSql(explain ? annotate(sql) : sql)
       }
-      // можно потом сохранить data.usage в odometer
     } catch (e:any) {
       alert('Ошибка генерации: ' + e.message)
     } finally {
@@ -92,21 +91,25 @@ export default function Home() {
               onChange={e=>setNl(e.target.value)}
               rows={5}
             />
-            <div style={{display:'flex', alignItems:'center', gap:12, marginTop:10}}>
-              <label style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer'}}>
+
+            {/* Компактный чекбокс справа от текстового поля */}
+            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10}}>
+              <div style={{height:1}} />
+              <label style={{display:'inline-flex',alignItems:'center',gap:8,fontSize:14,opacity:.9,cursor:'pointer'}}>
                 <input type="checkbox" checked={explain} onChange={e=>setExplain(e.target.checked)} />
-                <span style={{opacity:.9}}>Пояснить SQL (комментарии к блокам)</span>
+                Пояснить SQL
               </label>
             </div>
+
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:10}}>
               <button onClick={onGenerate} disabled={loadingGen}
-                style={{background:'linear-gradient(90deg, #22d3ee, #3b82f6)', color:'#0b1220', fontWeight:700, border:'none', borderRadius:12, padding:'10px 14px', cursor:'pointer'}}>
-                {loadingGen ? '⏳ Генерируем…' : '�� Сгенерировать SQL'}
+                style={{height:44, background:'linear-gradient(90deg, #22d3ee, #3b82f6)', color:'#0b1220', fontWeight:700, border:'none', borderRadius:12, padding:'0 14px', cursor:'pointer'}}>
+                {loadingGen ? 'Генерируем…' : 'Сгенерировать SQL'}
               </button>
               <button
                 onClick={()=>{ setGeneratedSql(null); setNl('') }}
-                style={{background:'#0b1220', color:'#e5e7eb', border:'1px solid #1f2937', borderRadius:12, padding:'10px 14px', cursor:'pointer'}}
-              >🧹 Очистить</button>
+                style={{height:44, background:'#0b1220', color:'#e5e7eb', border:'1px solid #1f2937', borderRadius:12, padding:'0 14px', cursor:'pointer'}}
+              >Очистить</button>
             </div>
 
             {generatedSql && (
