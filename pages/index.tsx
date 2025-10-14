@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import DbConnect from './components/DbConnect'
 import SchemasManager from './components/SchemasManager'
 import { generateSql, saveSchema } from '../lib/api'
@@ -23,6 +23,12 @@ export default function Home() {
   const [explain, setExplain] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saveName, setSaveName] = useState('')
+
+  // auth topbar state
+  const [signedIn, setSignedIn] = useState(false)
+  useEffect(() => {
+    try { setSignedIn(!!localStorage.getItem('jwt')) } catch {}
+  }, [])
 
   // toasts
   const [note, setNote] = useState<{type:'ok'|'warn'|'err', text:string} | null>(null)
@@ -56,14 +62,19 @@ export default function Home() {
       <div className="page-wrap">
         {/* Auth topbar */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-          <span id="authEmail" style={{opacity:0.85}}></span>
-          <button onClick={()=>{try{localStorage.removeItem('jwt');location.reload()}catch(e){console.error(e)}}} style={{background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}>Sign out</button>
+          <span style={{opacity:.85}}>
+            {signedIn ? 'Signed in' : 'Guest'}
+          </span>
+          {signedIn && (
+            <button
+              onClick={()=>{
+                try { localStorage.removeItem('jwt'); location.reload() } catch(e){ console.error(e) }
+              }}
+              style={{background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}
+            >Sign out</button>
+          )}
         </div>
-        {/* Auth topbar */}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-          <span id='authEmail' style={{opacity:.85}}></span>
-          <button onClick={()=>{try{localStorage.removeItem('jwt');location.reload()}catch(e){console.error(e)}}} style={{background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}>Sign out</button>
-        </div>
+
         {/* Toast */}
         {note && (
           <div style={{position:'fixed',right:16,bottom:16,zIndex:50,
@@ -74,11 +85,7 @@ export default function Home() {
           </div>
         )}
 
-        <script>
-try{var t=localStorage.getItem('jwt');if(t){document.addEventListener('DOMContentLoaded',function(){var e=document.getElementById('authEmail');if(e)e.textContent='Signed in';});}}
-catch(e){}
-</script>
-<h1 style={{margin:0}}>🧠 AI SQL Advisor</h1>
+        <h1 style={{margin:0}}>🧠 AI SQL Advisor</h1>
         <p style={{margin:'6px 0 20px',opacity:.8}}>Генерация SQL и управление схемами.</p>
 
         <div style={{display:'flex',gap:8,marginBottom:16}}>
@@ -125,13 +132,13 @@ catch(e){}
               rows={5}
               style={input}
             />
-            {/* чекбокс одной строкой, без переноса */}
+            {/* чекбокс одной строкой */}
             <div style={{display:'inline-flex',alignItems:'center',gap:8,marginTop:10,fontSize:14,opacity:.9,whiteSpace:'nowrap'}}>
               <input id="explain" type="checkbox" checked={explain} onChange={e=>setExplain(e.target.checked)} />
               <label htmlFor="explain" style={{cursor:'pointer',margin:0}}>Пояснить SQL</label>
             </div>
 
-            <div style={{display:'flex',gap:8,marginTop:50}}>
+            <div style={{display:'flex',gap:8,marginTop:10}}>
               <button onClick={onGenerate} disabled={loading} style={btnMain}>
                 {loading ? '⏳ Генерируем…' : 'Сгенерировать'}
               </button>
