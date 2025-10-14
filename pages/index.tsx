@@ -5,15 +5,33 @@ import { generateSql } from '../lib/api'
 function annotate(sql: string) {
   const up = sql.toUpperCase()
   const notes:string[] = []
-  if (up.includes('SELECT'))   notes.push('-- SELECT: какие колонки выводим')
-  if (up.includes('FROM'))     notes.push('-- FROM: из какой таблицы берём')
-  if (up.includes('JOIN'))     notes.push('-- JOIN: соединяем таблицы')
-  if (up.includes('WHERE'))    notes.push('-- WHERE: фильтрация строк')
-  if (up.includes('GROUP BY')) notes.push('-- GROUP BY: группировка')
-  if (up.includes('ORDER BY')) notes.push('-- ORDER BY: сортировка')
-  if (up.includes('COALESCE('))notes.push('-- COALESCE: замена NULL на значение')
-  if (up.includes('COUNT('))   notes.push('-- COUNT: COUNT(*) считает все строки')
+  if (up.includes('SELECT'))   notes.push('-- SELECT: какие колонки выводим и почему')
+  if (up.includes('FROM'))     notes.push('-- FROM: основная таблица/представление источника данных')
+  if (up.includes('JOIN'))     notes.push('-- JOIN: связываем таблицы по ключам, чтобы не потерять строки')
+  if (up.includes('WHERE'))    notes.push('-- WHERE: фильтрация — оставляем только нужные строки')
+  if (up.includes('GROUP BY')) notes.push('-- GROUP BY: группируем по ключам агрегирования')
+  if (up.includes('ORDER BY')) notes.push('-- ORDER BY: итоговая сортировка для удобного чтения')
+  if (up.includes('COALESCE('))notes.push('-- COALESCE: заменяем NULL на значение по умолчанию')
+  if (up.includes('COUNT('))   notes.push('-- COUNT: считаем строки, COUNT(*) — все, COUNT(col) — только не-NULL')
   return notes.length ? `/* Пояснения:\n${notes.join('\n')}\n*/\n` + sql : sql
+}
+
+const DANGEROUS_RE = /\b(DELETE|UPDATE|INSERT|ALTER|DROP|TRUNCATE|MERGE|CREATE|REPLACE)\b/i
+const isDangerous = (sql:string) => DANGEROUS_RE.test(sql)
+
+function wrapWithTransaction(sql: string) {
+  const body = sql.trim().replace(/;?\s*$/, ';')
+  return [
+    'BEGIN TRANSACTION;',
+    'SAVEPOINT ai_guard; -- точка отката',
+    '',
+    '-- ваши операции ниже:',
+    body,
+    '',
+    '-- при необходимости можно откатить:',
+    '-- ROLLBACK TO SAVEPOINT ai_guard;',
+    'COMMIT;'
+  ].join('\n')
 }
 
 export default function Home() {
@@ -21,8 +39,15 @@ export default function Home() {
   const [schemaJson, setSchemaJson] = useState<any | null>(null)
   const [nl, setNl] = useState('')
   const [generatedSql, setGeneratedSql] = useState<string | null>(null)
+  const [wrappedSql, setWrappedSql] = useState<string | null>(null)
   const [explain, setExplain] = useState(false)
   const [loadingGen, setLoadingGen] = useState(false)
+  const [isDanger, setIsDanger] = useState(false)
+
+  const copy = async (text: string) => {
+    try { await navigator.clipboard.writeText(text); alert('Скопировано ✅') }
+    catch { alert('Не удалось скопировать') }
+  }
 
   const onGenerate = async () => {
     if (!schemaJson) return alert('Сначала загрузите схему.')
@@ -32,17 +57,32 @@ export default function Home() {
       const data = await generateSql(nl.trim(), schemaJson, 'postgres')
       if (data.blocked) {
         alert('🚫 Запрос заблокирован: ' + (data.reason || 'policy'))
-        setGeneratedSql(null)
-      } else {
-        const sql = String(data.sql || '')
-        setGeneratedSql(explain ? annotate(sql) : sql)
+        setGeneratedSql(null); setWrappedSql(null); setIsDanger(false)
+        return
       }
+      const raw = String(data.sql || '')
+      const danger = isDangerous(raw)
+      setIsDanger(danger)
+
+      const base = explain ? annotate(raw) : raw
+      const wrapped = explain ? annotate(wrapWithTransaction(raw)) : wrapWithTransaction(raw)
+
+      setGeneratedSql(base)
+      setWrappedSql(danger ? wrapped : null)
     } catch (e:any) {
       alert('Ошибка генерации: ' + e.message)
     } finally {
       setLoadingGen(false)
     }
   }
+
+  const Code = ({children}:{children:string}) => (
+    <pre style={{
+      background:'#0b1220', border:'1px solid #1f2937', borderRadius:12,
+      padding:'12px', whiteSpace:'pre-wrap', fontFamily:'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      fontSize:13, lineHeight:1.5
+    }}>{children}</pre>
+  )
 
   return (
     <div>
@@ -66,7 +106,7 @@ export default function Home() {
         {tab==='scan' && (
           <div style={{border:'1px solid #1f2937',borderRadius:12,padding:16,background:'#0f172a'}}>
             <h3 style={{marginTop:0}}>Подключение и загрузка схемы</h3>
-            <DbConnect onLoaded={(s)=>setSchemaJson(s)} />
+            <DbConnect onLoaded={(s)=>{ setSchemaJson(s); setGeneratedSql(null); setWrappedSql(null); setIsDanger(false) }} />
 
             {schemaJson && (
               <>
@@ -77,7 +117,7 @@ export default function Home() {
                 </div>
                 <details style={{marginTop:10}}>
                   <summary>Показать JSON-схему</summary>
-                  <pre style={{whiteSpace:'pre-wrap'}}>{JSON.stringify(schemaJson, null, 2)}</pre>
+                  <Code>{JSON.stringify(schemaJson, null, 2)}</Code>
                 </details>
               </>
             )}
@@ -92,30 +132,54 @@ export default function Home() {
               rows={5}
             />
 
-            {/* Компактный чекбокс справа от текстового поля */}
-            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:10}}>
-              <div style={{height:1}} />
-              <label style={{display:'inline-flex',alignItems:'center',gap:8,fontSize:14,opacity:.9,cursor:'pointer'}}>
-                <input type="checkbox" checked={explain} onChange={e=>setExplain(e.target.checked)} />
-                Пояснить SQL
-              </label>
+            <div style={{display:'inline-flex',alignItems:'center',gap:8,marginTop:10,fontSize:14,opacity:.9}}>
+              <input id="explain" type="checkbox" checked={explain} onChange={e=>setExplain(e.target.checked)} />
+              <label htmlFor="explain" style={{cursor:'pointer'}}>Пояснить SQL</label>
             </div>
 
             <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginTop:10}}>
               <button onClick={onGenerate} disabled={loadingGen}
-                style={{height:44, background:'linear-gradient(90deg, #22d3ee, #3b82f6)', color:'#0b1220', fontWeight:700, border:'none', borderRadius:12, padding:'0 14px', cursor:'pointer'}}>
-                {loadingGen ? 'Генерируем…' : 'Сгенерировать SQL'}
+                style={{background:'linear-gradient(90deg, #22d3ee, #3b82f6)', color:'#0b1220', fontWeight:700, border:'none', borderRadius:12, padding:'10px 14px', cursor:'pointer'}}>
+                {loadingGen ? '⏳ Генерируем…' : 'Сгенерировать SQL'}
               </button>
               <button
-                onClick={()=>{ setGeneratedSql(null); setNl('') }}
-                style={{height:44, background:'#0b1220', color:'#e5e7eb', border:'1px solid #1f2937', borderRadius:12, padding:'0 14px', cursor:'pointer'}}
+                onClick={()=>{ setGeneratedSql(null); setWrappedSql(null); setIsDanger(false); setNl('') }}
+                style={{background:'#0b1220', color:'#e5e7eb', border:'1px solid #1f2937', borderRadius:12, padding:'10px 14px', cursor:'pointer'}}
               >Очистить</button>
             </div>
+
+            {isDanger && (
+              <div style={{marginTop:16, border:'1px solid #f59e0b55', background:'#f59e0b10', borderRadius:12, padding:'12px'}}>
+                <b style={{color:'#fbbf24'}}>Внимание:</b> запрос меняет данные/схему. Лучше запускать <i>в транзакции с SAVEPOINT/ROLLBACK</i>. Ниже — два варианта.
+              </div>
+            )}
 
             {generatedSql && (
               <div style={{marginTop:16}}>
                 <h3 style={{marginTop:0}}>Результат</h3>
-                <pre style={{background:'#0b1220', border:'1px solid #1f2937', borderRadius:12, padding:'12px', whiteSpace:'pre-wrap'}}>{generatedSql}</pre>
+
+                {isDanger && wrappedSql ? (
+                  <>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <h4 style={{margin:'8px 0 6px'}}>Вариант A — в транзакции (рекомендуется)</h4>
+                      <button onClick={()=>copy(wrappedSql!)} style={{border:'1px solid #334155',background:'#0b1220',color:'#e5e7eb',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}>Скопировать</button>
+                    </div>
+                    <Code>{wrappedSql}</Code>
+
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center', marginTop:10}}>
+                      <h4 style={{margin:'8px 0 6px'}}>Вариант B — без транзакции</h4>
+                      <button onClick={()=>copy(generatedSql!)} style={{border:'1px solid #334155',background:'#0b1220',color:'#e5e7eb',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}>Скопировать</button>
+                    </div>
+                    <Code>{generatedSql}</Code>
+                  </>
+                ) : (
+                  <>
+                    <div style={{display:'flex',justifyContent:'flex-end',alignItems:'center'}}>
+                      <button onClick={()=>copy(generatedSql!)} style={{border:'1px solid #334155',background:'#0b1220',color:'#e5e7eb',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}>Скопировать</button>
+                    </div>
+                    <Code>{generatedSql}</Code>
+                  </>
+                )}
               </div>
             )}
           </div>
