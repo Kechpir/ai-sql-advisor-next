@@ -9,7 +9,7 @@ export default function AuthPage() {
   const SITE  = process.env.NEXT_PUBLIC_SITE_URL || (typeof window!=='undefined'?window.location.origin:'')
 
   // tabs: вход/рег/сброс
-  const [tab, setTab] = useState<'signin'|'signup'|'reset'>((typeof window!=='undefined' && window.location.hash.includes('recovery')) ? 'reset' : 'signin')
+  const [tab, setTab] = useState<'signin'|'signup'|'reset'>('signin')
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [msg,  setMsg]  = useState('')
@@ -20,40 +20,80 @@ export default function AuthPage() {
   const [newPass, setNewPass] = useState('')
   const [newPass2, setNewPass2] = useState('')
 
-  // 1) СНАЧАЛА разбираем токены из URL (recovery / oauth)
+  // 1) Разбор всех вариантов токенов из URL
   useEffect(()=>{
     if (typeof window==='undefined') return
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-    const qs   = new URLSearchParams(window.location.search)
-    const token = hash.get('access_token') || qs.get('access_token') || new URLSearchParams(window.location.search).get('access_token')
-    const type  = (hash.get('type') || qs.get('type') || '').toLowerCase()
+    const hash  = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+    const qs    = new URLSearchParams(window.location.search)
 
-    if (!token) return
+    // что можем получить:
+    const accessFromHash  = hash.get('access_token')
+    const accessFromQuery = qs.get('access_token')
+    const tokenHash       = qs.get('token_hash') || hash.get('token_hash')
+    const type            = (hash.get('type') || qs.get('type') || '').toLowerCase()
 
-    // a) Recovery: показываем форму смены пароля и чистим старый jwt, чтобы защитник не редиректил
-    if (type === 'recovery') {
+    // a) Recovery через access_token (в хеше или query) — сразу показать форму смены пароля
+    if ((accessFromHash || accessFromQuery) && type === 'recovery') {
       try { localStorage.removeItem('jwt') } catch {}
-      setRecoveryToken(token)
+      setRecoveryToken(accessFromHash || accessFromQuery)
       setTab('reset')
       setMsg('Введите новый пароль и подтвердите.')
       return
     }
 
-    // b) Обычный OAuth-возврат: сохраняем JWT и в кабинет
-    try {
-      localStorage.setItem('jwt', token)
-      router.replace('/')
-    } catch (e) {
-      console.error(e)
+    // b) Recovery через token_hash — обмениваем на access_token через /auth/v1/verify
+    async function exchangeTokenHash(th: string) {
+      try {
+        setLoading(true)
+        // REST-аналог supabase.auth.verifyOtp({ type: 'recovery', token_hash })
+        const r = await fetch(`${SUPA}/auth/v1/verify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'apikey': ANON,
+            'Authorization': `Bearer ${ANON}`,
+          },
+          body: JSON.stringify({ type: 'recovery', token_hash: th }),
+        })
+        const j = await r.json().catch(()=> ({}))
+        if (!r.ok) throw new Error(j.error_description || j.message || 'Verify failed')
+        // j.access_token, j.refresh_token, j.user
+        if (j?.access_token) {
+          try { localStorage.removeItem('jwt') } catch {}
+          setRecoveryToken(j.access_token)
+          setTab('reset')
+          setMsg('Введите новый пароль и подтвердите.')
+          return
+        }
+        throw new Error('No access_token in verify response')
+      } catch (e:any) {
+        console.error('verify error', e)
+        setMsg('Не удалось подтвердить ссылку восстановления: ' + e.message)
+      } finally {
+        setLoading(false)
+      }
     }
-  },[router])
 
-  // 2) Редирект на / если УЖЕ залогинен (но только если это НЕ recovery-сценарий)
+    if (type === 'recovery' && tokenHash) {
+      exchangeTokenHash(tokenHash)
+      return
+    }
+
+    // c) Обычный OAuth-возврат (Google / magic link): сохраним access_token и в кабинет
+    const oauthAccess = accessFromHash || accessFromQuery
+    if (oauthAccess) {
+      try { localStorage.setItem('jwt', oauthAccess); router.replace('/') } catch(e){ console.error(e) }
+      return
+    }
+
+  },[router, SUPA, ANON])
+
+  // 2) Редирект на / если уже залогинен (но не во время recovery-экрана)
   useEffect(()=>{
     try{
-      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-      const qs   = new URLSearchParams(window.location.search)
-      const t    = (hash.get('type') || qs.get('type') || '').toLowerCase()
+      const h = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      const q = new URLSearchParams(window.location.search)
+      const t = (h.get('type') || q.get('type') || '').toLowerCase()
       if (t === 'recovery') return
       if (localStorage.getItem('jwt')) router.replace('/')
     }catch{}
@@ -91,7 +131,7 @@ export default function AuthPage() {
     finally{ setLoading(false) }
   }
 
-  // Ссылка для сброса: ВЕДЁМ НА /auth, чтобы тут поймать type=recovery
+  // Ссылка для сброса ведёт на /auth: тут мы её ловим (hash/query) и обрабатываем
   async function sendResetLink() {
     setLoading(true); setMsg('')
     try {
@@ -140,51 +180,53 @@ export default function AuthPage() {
       <h2 style={{marginTop:0}}>🧠 AI SQL Advisor</h2>
       <p style={{opacity:.7,marginTop:-8,marginBottom:20}}>Вход / Регистрация / Сброс</p>
 
-      <div style={row}>
-        <button onClick={()=>setTab('signin')} style={tabBtn(tab==='signin')}>Вход</button>
-        <button onClick={()=>setTab('signup')} style={tabBtn(tab==='signup')}>Регистрация</button>
-        <button onClick={()=>setTab('reset')}  style={tabBtn(tab==='reset')}>Сброс</button>
-      </div>
-
-      {/* Обычный вход/регистрация */}
-      {tab!=='reset' && !recoveryToken && (
-        <>
-          <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-          <input style={input} placeholder="Пароль" type="password" value={pass} onChange={e=>setPass(e.target.value)} />
-          <button disabled={loading} onClick={tab==='signin'?login:signup} style={btn}>
-            {loading ? '⏳' : tab==='signin' ? 'Войти' : 'Создать аккаунт'}
-          </button>
-
-          <a href={GOOGLE_URL} style={googleBtn} target="_self" rel="noopener">
-            <svg style={{width:18,height:18}} viewBox="0 0 48 48" aria-hidden="true">
-              <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.9 0-12.5-5.6-12.5-12.5S17.1 11 24 11c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
-              <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.9 16.5 19 14 24 14c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
-              <path fill="#4CAF50" d="M24 45c5.4 0 10.3-1.8 14.1-4.9l-6.5-5.4C29.6 36.5 26.9 37.5 24 37.5c-5.2 0-9.6-3.3-11.2-8.1l-6.6 5.1C8.9 41.1 15.9 45 24 45z"/>
-              <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.2 3.4-3.8 6.1-7 7.6l6.5 5.4C38.3 39.2 42 32.6 42 24c0-1.3-.1-2.6-.4-3.5z"/>
-            </svg>
-            <span>Continue with Google</span>
-          </a>
-        </>
-      )}
-
-      {/* Смена пароля (из письма) */}
-      {recoveryToken && (
+      {/* Экран смены пароля (recovery) */}
+      {recoveryToken ? (
         <>
           <input style={input} placeholder="Новый пароль" type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} />
           <input style={input} placeholder="Повторите пароль" type="password" value={newPass2} onChange={e=>setNewPass2(e.target.value)} />
           <button disabled={loading} onClick={applyNewPassword} style={btn}>{loading ? '⏳' : 'Обновить пароль'}</button>
+          {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
         </>
-      )}
-
-      {/* Обычный "Сброс пароля" (отправка письма) */}
-      {tab==='reset' && !recoveryToken && (
+      ) : (
         <>
-          <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-          <button disabled={loading} onClick={sendResetLink} style={btn}>{loading ? '⏳' : 'Отправить ссылку'}</button>
+          <div style={row}>
+            <button onClick={()=>setTab('signin')} style={tabBtn(tab==='signin')}>Вход</button>
+            <button onClick={()=>setTab('signup')} style={tabBtn(tab==='signup')}>Регистрация</button>
+            <button onClick={()=>setTab('reset')}  style={tabBtn(tab==='reset')}>Сброс</button>
+          </div>
+
+          {/* Обычный вход/регистрация */}
+          {tab!=='reset' && (
+            <>
+              <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
+              <input style={input} placeholder="Пароль" type="password" value={pass} onChange={e=>setPass(e.target.value)} />
+              <button disabled={loading} onClick={tab==='signin'?login:signup} style={btn}>
+                {loading ? '⏳' : tab==='signin' ? 'Войти' : 'Создать аккаунт'}
+              </button>
+
+              <a href={GOOGLE_URL} style={googleBtn} target="_self" rel="noopener">
+                <svg style={{width:18,height:18}} viewBox="0 0 48 48" aria-hidden="true">
+                  <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.9 0-12.5-5.6-12.5-12.5S17.1 11 24 11c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
+                  <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.9 16.5 19 14 24 14c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
+                  <path fill="#4CAF50" d="M24 45c5.4 0 10.3-1.8 14.1-4.9l-6.5-5.4C29.6 36.5 26.9 37.5 24 37.5c-5.2 0-9.6-3.3-11.2-8.1l-6.6 5.1C8.9 41.1 15.9 45 24 45z"/>
+                  <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.2 3.4-3.8 6.1-7 7.6l6.5 5.4C38.3 39.2 42 32.6 42 24c0-1.3-.1-2.6-.4-3.5z"/>
+                </svg>
+                <span>Continue with Google</span>
+              </a>
+            </>
+          )}
+
+          {/* Обычный "Сброс пароля" (отправка письма) */}
+          {tab==='reset' && (
+            <>
+              <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
+              <button disabled={loading} onClick={sendResetLink} style={btn}>{loading ? '⏳' : 'Отправить ссылку'}</button>
+              {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
+            </>
+          )}
         </>
       )}
-
-      {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
     </div>
   )
 }
