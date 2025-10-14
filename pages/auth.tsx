@@ -9,7 +9,7 @@ export default function AuthPage() {
   const SITE  = process.env.NEXT_PUBLIC_SITE_URL || (typeof window!=='undefined'?window.location.origin:'')
 
   // tabs: вход/рег/сброс
-  const [tab, setTab] = useState<'signin'|'signup'|'reset'>('signin')
+  const [tab, setTab] = useState<'signin'|'signup'|'reset'>((typeof window!=='undefined' && window.location.hash.includes('recovery')) ? 'reset' : 'signin')
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
   const [msg,  setMsg]  = useState('')
