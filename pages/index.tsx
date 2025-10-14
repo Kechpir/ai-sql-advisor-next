@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/router'
 import DbConnect from './components/DbConnect'
 import SchemasManager from './components/SchemasManager'
 import { generateSql, saveSchema } from '../lib/api'
@@ -16,6 +17,7 @@ function annotate(sql: string) {
 }
 
 export default function Home() {
+  const router = useRouter()
   const [tab, setTab] = useState<'scan'|'saved'>('scan')
   const [schemaJson, setSchemaJson] = useState<any|null>(null)
   const [nl, setNl] = useState('')
@@ -24,11 +26,14 @@ export default function Home() {
   const [loading, setLoading] = useState(false)
   const [saveName, setSaveName] = useState('')
 
-  // auth topbar state
-  const [signedIn, setSignedIn] = useState(false)
+  // auth topbar state + guard
+  const [signedIn, setSignedIn] = useState<boolean | null>(null)
   useEffect(() => {
-    try { setSignedIn(!!localStorage.getItem('jwt')) } catch {}
+    try { setSignedIn(!!localStorage.getItem('jwt')) } catch { setSignedIn(false) }
   }, [])
+  useEffect(() => {
+    if (signedIn === false) router.replace('/auth')
+  }, [signedIn, router])
 
   // toasts
   const [note, setNote] = useState<{type:'ok'|'warn'|'err', text:string} | null>(null)
@@ -57,14 +62,16 @@ export default function Home() {
     } catch (e:any) { console.error(e); toast('err','Ошибка сохранения') }
   }
 
+  // Пока проверяем сессию — показываем скелет
+  if (signedIn === null) return <div style={{padding:24,color:'#e5e7eb'}}>Загрузка…</div>
+  if (signedIn === false) return null
+
   return (
     <div>
       <div className="page-wrap">
         {/* Auth topbar */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
-          <span style={{opacity:.85}}>
-            {signedIn ? 'Signed in' : 'Guest'}
-          </span>
+          <span style={{opacity:.85}}>{signedIn ? 'Signed in' : 'Guest'}</span>
           {signedIn && (
             <button
               onClick={()=>{
