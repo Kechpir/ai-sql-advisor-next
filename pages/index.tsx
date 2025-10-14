@@ -56,6 +56,11 @@ export default function Home() {
       <div className="page-wrap">
         {/* Auth topbar */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
+          <span id="authEmail" style={{opacity:0.85}}></span>
+          <button onClick={()=>{try{localStorage.removeItem('jwt');location.reload()}catch(e){console.error(e)}}} style={{background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}>Sign out</button>
+        </div>
+        {/* Auth topbar */}
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:12}}>
           <span id='authEmail' style={{opacity:.85}}></span>
           <button onclick="(function(){try{localStorage.removeItem('jwt');location.reload()}catch(e){}})()" style="background:#0b1220;color:#e5e7eb;border:1px solid #1f2937;border-radius:10px;padding:6px 10px;cursor:pointer">Sign out</button>
         </div>
@@ -126,7 +131,7 @@ catch(e){}
               <label htmlFor="explain" style={{cursor:'pointer',margin:0}}>Пояснить SQL</label>
             </div>
 
-            <div style={{display:'flex',gap:8,marginTop:10}}>
+            <div style={{display:'flex',gap:8,marginTop:50}}>
               <button onClick={onGenerate} disabled={loading} style={btnMain}>
                 {loading ? '⏳ Генерируем…' : 'Сгенерировать'}
               </button>
