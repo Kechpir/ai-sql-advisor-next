@@ -6,27 +6,28 @@ export default function AuthPage() {
 
   const SUPA  = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  const SITE  = process.env.NEXT_PUBLIC_SITE_URL || (typeof window!=='undefined'?window.location.origin:'')
+  const SITE  = process.env.NEXT_PUBLIC_SITE_URL || (typeof window!=='undefined' ? window.location.origin : '')
 
   // tabs: вход/рег/сброс
   const [tab, setTab] = useState<'signin'|'signup'|'reset'>('signin')
   const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [msg,  setMsg]  = useState('')
+  const [pass,  setPass]  = useState('')
+  const [msg,   setMsg]   = useState('')
   const [loading, setLoading] = useState(false)
 
   // recovery / oauth callback
   const [recoveryToken, setRecoveryToken] = useState<string | null>(null)
-  const [newPass, setNewPass] = useState('')
+  const [newPass,  setNewPass]  = useState('')
   const [newPass2, setNewPass2] = useState('')
 
   // 1) Разбор всех вариантов токенов из URL
-  useEffect(()=>{
-    if (typeof window==='undefined') return
-    const hash  = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-    const qs    = new URLSearchParams(window.location.search)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
 
-    // что можем получить:
+    const u    = new URL(window.location.href)
+    const hash = new URLSearchParams(u.hash.replace(/^#/, ''))
+    const qs   = new URLSearchParams(u.search)
+
     const accessFromHash  = hash.get('access_token')
     const accessFromQuery = qs.get('access_token')
     const tokenHash       = qs.get('token_hash') || hash.get('token_hash')
@@ -38,6 +39,8 @@ export default function AuthPage() {
       setRecoveryToken(accessFromHash || accessFromQuery)
       setTab('reset')
       setMsg('Введите новый пароль и подтвердите.')
+      // чистим URL без токенов
+      history.replaceState({}, '', u.pathname)
       return
     }
 
@@ -45,7 +48,6 @@ export default function AuthPage() {
     async function exchangeTokenHash(th: string) {
       try {
         setLoading(true)
-        // REST-аналог supabase.auth.verifyOtp({ type: 'recovery', token_hash })
         const r = await fetch(`${SUPA}/auth/v1/verify`, {
           method: 'POST',
           headers: {
@@ -55,18 +57,18 @@ export default function AuthPage() {
           },
           body: JSON.stringify({ type: 'recovery', token_hash: th }),
         })
-        const j = await r.json().catch(()=> ({}))
+        const j = await r.json().catch(() => ({}))
         if (!r.ok) throw new Error(j.error_description || j.message || 'Verify failed')
-        // j.access_token, j.refresh_token, j.user
         if (j?.access_token) {
           try { localStorage.removeItem('jwt') } catch {}
           setRecoveryToken(j.access_token)
           setTab('reset')
           setMsg('Введите новый пароль и подтвердите.')
+          history.replaceState({}, '', u.pathname)
           return
         }
         throw new Error('No access_token in verify response')
-      } catch (e:any) {
+      } catch (e: any) {
         console.error('verify error', e)
         setMsg('Не удалось подтвердить ссылку восстановления: ' + e.message)
       } finally {
@@ -82,28 +84,30 @@ export default function AuthPage() {
     // c) Обычный OAuth-возврат (Google / magic link): сохраним access_token и в кабинет
     const oauthAccess = accessFromHash || accessFromQuery
     if (oauthAccess) {
-      try { localStorage.setItem('jwt', oauthAccess); router.replace('/') } catch(e){ console.error(e) }
+      try { localStorage.setItem('jwt', oauthAccess) } catch {}
+      history.replaceState({}, '', u.pathname)
+      router.replace('/')
       return
     }
-
-  },[router, SUPA, ANON])
+  }, [router, SUPA, ANON])
 
   // 2) Редирект на / если уже залогинен (но не во время recovery-экрана)
-  useEffect(()=>{
-    try{
-      const h = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-      const q = new URLSearchParams(window.location.search)
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href)
+      const h = new URLSearchParams(u.hash.replace(/^#/, ''))
+      const q = new URLSearchParams(u.search)
       const t = (h.get('type') || q.get('type') || '').toLowerCase()
       if (t === 'recovery') return
       if (localStorage.getItem('jwt')) router.replace('/')
-    }catch{}
-  },[router])
+    } catch {}
+  }, [router])
 
-  async function req(path:string, body:any) {
+  async function req(path: string, body: any) {
     const r = await fetch(`${SUPA}/auth/v1/${path}`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
-      body:JSON.stringify(body)
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': ANON, 'Authorization': `Bearer ${ANON}` },
+      body: JSON.stringify(body)
     })
     return r
   }
@@ -111,35 +115,48 @@ export default function AuthPage() {
   async function login() {
     setLoading(true); setMsg('')
     try {
-      const r = await req('token?grant_type=password',{email,password:pass})
+      const r = await req('token?grant_type=password', { email, password: pass })
       const j = await r.json()
-      if(!r.ok) throw new Error(j.error_description||j.message)
+      if (!r.ok) throw new Error(j.error_description || j.message)
       localStorage.setItem('jwt', j.access_token)
       router.replace('/')
-    } catch(e:any){ setMsg('Ошибка входа: '+e.message) }
-    finally{ setLoading(false) }
+    } catch (e: any) {
+      setMsg('Ошибка входа: ' + e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   async function signup() {
     setLoading(true); setMsg('')
     try {
-      const r = await req('signup',{email,password:pass})
-      const j = await r.json()
-      if(!r.ok) throw new Error(j.error_description||j.message)
-      setMsg('📨 Проверьте почту для подтверждения.')
-    } catch(e:any){ setMsg('Ошибка регистрации: '+e.message) }
-    finally{ setLoading(false) }
+      const r = await req('signup', {
+        email,
+        password: pass,
+        email_redirect_to: (SITE?.endsWith('/auth') ? SITE : (SITE + '/auth')),
+      })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error_description || j.message || 'signup_failed')
+      setMsg(`📨 Письмо для подтверждения отправлено на ${email}. Открой ссылку из письма, затем войдите.`)
+    } catch (e: any) {
+      setMsg('Ошибка регистрации: ' + (e.message || e.toString()))
+    } finally {
+      setLoading(false)
+    }
   }
 
   // Ссылка для сброса ведёт на /auth: тут мы её ловим (hash/query) и обрабатываем
   async function sendResetLink() {
     setLoading(true); setMsg('')
     try {
-      const r = await req('recover',{email,redirect_to: `${SITE}/auth`})
-      if(!r.ok) throw new Error(await r.text())
+      const r = await req('recover', { email, redirect_to: `${SITE}/auth` })
+      if (!r.ok) throw new Error(await r.text())
       setMsg('📨 Ссылка для сброса пароля отправлена.')
-    } catch(e:any){ setMsg('Ошибка сброса: '+e.message) }
-    finally{ setLoading(false) }
+    } catch (e: any) {
+      setMsg('Ошибка сброса: ' + e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
   // смена пароля по токену (type=recovery)
@@ -149,31 +166,36 @@ export default function AuthPage() {
     setLoading(true); setMsg('')
     try {
       const r = await fetch(`${SUPA}/auth/v1/user`, {
-        method:'PUT',
-        headers:{
-          'Content-Type':'application/json',
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
           'apikey': ANON,
           'Authorization': `Bearer ${recoveryToken}`,
         },
         body: JSON.stringify({ password: newPass })
       })
-      const j = await r.json().catch(()=> ({}))
-      if(!r.ok) throw new Error(j.error_description||j.message||'Ошибка смены пароля')
-      // пароль обновлён: сохраняем токен и в кабинет
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(j.error_description || j.message || 'Ошибка смены пароля')
       localStorage.setItem('jwt', recoveryToken)
       setMsg('✅ Пароль обновлён')
       router.replace('/')
-    } catch(e:any){ setMsg(e.message) }
-    finally{ setLoading(false) }
+    } catch (e: any) {
+      setMsg(e.message)
+    } finally {
+      setLoading(false)
+    }
   }
 
-const GOOGLE_URL = "/api/google-login";
-  const box = {background:'#0f172a',border:'1px solid #1f2937',borderRadius:12,padding:20,width:'100%',maxWidth:420,margin:'60px auto'} as const
-  const input = {background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'10px 12px',width:'100%',marginBottom:10} as const
-  const row  = {display:'flex',gap:8,marginBottom:12} as const
-  const btn  = {background:'linear-gradient(90deg,#22d3ee,#3b82f6)',color:'#0b1220',fontWeight:700,border:'none',borderRadius:10,padding:'10px 14px',width:'100%',marginTop:4,cursor:'pointer'} as const
-  const tabBtn=(active:boolean)=>({flex:1,borderRadius:8,padding:'8px 10px',border:'1px solid #1f2937',background:active?'#111827':'#0b1220',color:'#e5e7eb',cursor:'pointer'}) as const
-  const googleBtn={display:'flex',alignItems:'center',gap:10,justifyContent:'center',marginTop:12,background:'#fff',color:'#111827',borderRadius:10,padding:'10px 14px',textDecoration:'none',fontWeight:700,boxShadow:'0 2px 6px rgba(0,0,0,.25)'} as const
+  // Роут для кнопки Google
+  const GOOGLE_URL = "/api/google-login"
+
+  // стили
+  const box = { background:'#0f172a', border:'1px solid #1f2937', borderRadius:12, padding:20, width:'100%', maxWidth:420, margin:'60px auto' } as const
+  const input = { background:'#0b1220', color:'#e5e7eb', border:'1px solid #1f2937', borderRadius:10, padding:'10px 12px', width:'100%', marginBottom:10 } as const
+  const row  = { display:'flex', gap:8, marginBottom:12 } as const
+  const btn  = { background:'linear-gradient(90deg,#22d3ee,#3b82f6)', color:'#0b1220', fontWeight:700, border:'none', borderRadius:10, padding:'10px 14px', width:'100%', marginTop:4, cursor:'pointer' } as const
+  const tabBtn = (active:boolean) => ({ flex:1, borderRadius:8, padding:'8px 10px', border:'1px solid #1f2937', background:active?'#111827':'#0b1220', color:'#e5e7eb', cursor:'pointer' }) as const
+  const googleBtn = { display:'flex', alignItems:'center', gap:10, justifyContent:'center', marginTop:12, background:'#fff', color:'#111827', borderRadius:10, padding:'10px 14px', textDecoration:'none', fontWeight:700, boxShadow:'0 2px 6px rgba(0,0,0,.25)' } as const
 
   return (
     <div style={box}>
@@ -225,6 +247,8 @@ const GOOGLE_URL = "/api/google-login";
               {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
             </>
           )}
+
+          {msg && tab!=='reset' && !recoveryToken && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
         </>
       )}
     </div>
