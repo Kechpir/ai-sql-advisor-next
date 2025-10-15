@@ -20,7 +20,7 @@ export default function AuthPage() {
   const [newPass, setNewPass] = useState('')
   const [newPass2, setNewPass2] = useState('')
 
-  // утилита REST
+  // === Утилита REST
   async function req(path:string, body:any) {
     const r = await fetch(`${SUPA}/auth/v1/${path}`, {
       method:'POST',
@@ -30,20 +30,34 @@ export default function AuthPage() {
     return r
   }
 
-  // Единый маппер ошибок Supabase Auth -> дружелюбные сообщения
+  // === Маппер ошибок Supabase Auth -> дружелюбные тексты
   function parseAuthError(status: number, j: any) {
-    const raw = (j?.error_description || j?.message || "")
+    const raw = (j?.error_description || j?.message || j?.msg || "")
     const msg = String(raw)
-    if (status === 400 && /(invalid_grant|Invalid login credentials)/i.test(msg)) return "❌ Неверный email или пароль."
-    if (status === 400 && /(Email not confirmed|email not confirmed)/i.test(msg)) return "✉️ Подтвердите email — мы отправили письмо. Если не пришло, попробуйте ‘Сброс’."
-    if (status === 409 || /already exists/i.test(msg)) return "⚠️ Такой email уже зарегистрирован. Нажмите ‘Вход’ или ‘Сброс пароля’."
-    if (status === 422 && /password|weak/i.test(msg)) return "🔒 Слабый пароль. Минимум 6 символов, лучше сложнее."
+
+    // ЛОГИН
+    if (status === 400 && /(invalid_grant|Invalid login credentials)/i.test(msg)) {
+      return "❌ Неверный email или пароль."
+    }
+    if (/user_not_found|No user found/i.test(msg)) {
+      return "❌ Неверный email или пароль."
+    }
+
+    // РЕГИСТРАЦИЯ
+    if (status === 409 || /already exists|user already registered/i.test(msg)) {
+      return "⚠️ Такой email уже зарегистрирован. Нажмите ‘Вход’ или ‘Сброс пароля’."
+    }
+    if (status === 422 && /password|weak|short/i.test(msg)) {
+      return "🔒 Пароль слишком короткий. Минимум 6 символов (лучше сложнее)."
+    }
+
+    // Другое
     if (status === 429 || /too many|rate/i.test(msg)) return "⏳ Слишком много попыток. Попробуйте позже."
-    if (/user_not_found|No user found/i.test(msg)) return "🙅 Пользователь не найден. Проверьте email или зарегистрируйтесь."
+    if (status === 400 && /(Email not confirmed|email not confirmed)/i.test(msg)) return "✉️ Подтвердите email — проверьте почту."
     return (raw || `Ошибка (${status})`)
   }
 
-  // Разбор callback-ов: OAuth и Recovery
+  // === Коллбеки OAuth/Recovery
   useEffect(()=>{
     if (typeof window==='undefined') return
     const hash  = new URLSearchParams(window.location.hash.replace(/^#/, ''))
@@ -54,14 +68,14 @@ export default function AuthPage() {
     const tokenHash       = qs.get('token_hash') || hash.get('token_hash')
     const type            = (hash.get('type') || qs.get('type') || '').toLowerCase()
 
-    // a) OAuth-возврат (Google / magic link): сохраним access_token и в кабинет
+    // OAuth возврат
     const oauthAccess = accessFromHash || accessFromQuery
     if (oauthAccess && type !== 'recovery') {
       try { localStorage.setItem('jwt', oauthAccess); router.replace('/') } catch(e){ console.error(e) }
       return
     }
 
-    // b) Recovery через access_token — сразу показать форму смены пароля
+    // Recovery с access_token
     if ((accessFromHash || accessFromQuery) && type === 'recovery') {
       try { localStorage.removeItem('jwt') } catch {}
       setRecoveryToken(accessFromHash || accessFromQuery)
@@ -70,17 +84,13 @@ export default function AuthPage() {
       return
     }
 
-    // c) Recovery через token_hash — обмениваем на access_token через /verify
+    // Recovery через token_hash -> verify
     async function exchangeTokenHash(th: string) {
       try {
         setLoading(true)
         const r = await fetch(`${SUPA}/auth/v1/verify`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': ANON,
-            'Authorization': `Bearer ${ANON}`,
-          },
+          headers: {'Content-Type':'application/json','apikey': ANON,'Authorization': `Bearer ${ANON}`},
           body: JSON.stringify({ type: 'recovery', token_hash: th }),
         })
         const j = await r.json().catch(()=> ({}))
@@ -107,7 +117,7 @@ export default function AuthPage() {
     }
   },[router, SUPA, ANON])
 
-  // Редирект на / если уже залогинен (но не во время recovery)
+  // Уже залогинен? — на главную (не мешаем recovery)
   useEffect(()=>{
     try{
       const h = new URLSearchParams(window.location.hash.replace(/^#/, ''))
@@ -118,12 +128,13 @@ export default function AuthPage() {
     }catch{}
   },[router])
 
+  // === ДЕЙСТВИЯ
   async function login() {
     setLoading(true); setMsg('')
     try {
       if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Введите корректный email.")
       if (!pass) throw new Error("Введите пароль.")
-      const r = await req('token?grant_type=password',{email,password:pass})
+      const r = await req('token?grant_type=password', { email, password: pass })
       const j = await r.json().catch(() => ({}))
       if (!r.ok) throw new Error(parseAuthError(r.status, j))
       localStorage.setItem('jwt', j.access_token)
@@ -136,37 +147,31 @@ export default function AuthPage() {
     setLoading(true); setMsg('')
     try {
       if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Введите корректный email.")
-      if (!pass || pass.length < 6) throw new Error("Пароль слишком короткий (мин. 6).")
-      const r = await req('signup',{
+      if (!pass || pass.length < 6) throw new Error("�� Пароль слишком короткий. Минимум 6 символов.")
+      const r = await req('signup', {
         email,
         password: pass,
         email_redirect_to: (SITE?.endsWith('/auth') ? SITE : (SITE + '/auth')),
       })
       const j = await r.json().catch(() => ({}))
-      if (r.status === 409 || /already exists/i.test(j?.message||""))
-        throw new Error("⚠️ Такой email уже зарегистрирован. Нажмите ‘Вход’ или ‘Сброс пароля’.")
       if (!r.ok) throw new Error(parseAuthError(r.status, j))
       setMsg(`📨 Письмо для подтверждения отправлено на ${email}. Перейдите по ссылке и затем войдите.`)
     } catch(e:any){ setMsg(e.message || 'Ошибка регистрации.') }
     finally{ setLoading(false) }
   }
 
-  // отправка письма для сброса (всегда без утечки существования)
+  // без утечки существования
   async function sendResetLink() {
     setLoading(true); setMsg('')
     try {
       if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Введите корректный email.")
       const r = await req('recover',{email,redirect_to: `${SITE}/auth`})
-      if (!r.ok) { // не палим детали
-        let text = await r.text().catch(()=> '')
-        console.warn('recover non-200:', r.status, text)
-      }
+      if (!r.ok) { await r.text().catch(()=> ''); /* не палим детали */ }
       setMsg('📨 Если аккаунт существует, письмо для сброса отправлено. Проверьте почту.')
     } catch(e:any){ setMsg(e.message || 'Ошибка сброса.') }
     finally{ setLoading(false) }
   }
 
-  // смена пароля по токену recovery
   async function applyNewPassword() {
     if (!recoveryToken) return setMsg('Нет токена восстановления.')
     if (!newPass || newPass !== newPass2) return setMsg('Пароли не совпадают.')
@@ -174,11 +179,7 @@ export default function AuthPage() {
     try {
       const r = await fetch(`${SUPA}/auth/v1/user`, {
         method:'PUT',
-        headers:{
-          'Content-Type':'application/json',
-          'apikey': ANON,
-          'Authorization': `Bearer ${recoveryToken}`,
-        },
+        headers:{'Content-Type':'application/json','apikey': ANON,'Authorization': `Bearer ${recoveryToken}`},
         body: JSON.stringify({ password: newPass })
       })
       const j = await r.json().catch(()=> ({}))
@@ -229,6 +230,8 @@ export default function AuthPage() {
               <button disabled={loading} onClick={tab==='signin'?login:signup} style={btn}>
                 {loading ? '⏳' : tab==='signin' ? 'Войти' : 'Создать аккаунт'}
               </button>
+              {/* глобальные сообщения для входа/регистрации */}
+              {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
 
               <a href={GOOGLE_URL} style={googleBtn} target="_self" rel="noopener">
                 <svg style={{width:18,height:18}} viewBox="0 0 48 48" aria-hidden="true">
@@ -252,7 +255,6 @@ export default function AuthPage() {
           )}
         </>
       )}
-      {(!recoveryToken && tab!=='reset') && msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
-</div>
+    </div>
   )
 }
