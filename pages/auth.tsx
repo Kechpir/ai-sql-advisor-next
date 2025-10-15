@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 
+type ApiError = { error?: string; error_code?: string; error_description?: string; message?: string; msg?: string }
+
 export default function AuthPage() {
   const router = useRouter()
 
@@ -14,50 +16,14 @@ export default function AuthPage() {
   const [pass, setPass] = useState('')
   const [msg,  setMsg]  = useState('')
   const [loading, setLoading] = useState(false)
+  const [lastErr, setLastErr] = useState<string>('')   // код последней ошибки (для UI-веток)
 
   // recovery / oauth callback
   const [recoveryToken, setRecoveryToken] = useState<string | null>(null)
   const [newPass, setNewPass] = useState('')
   const [newPass2, setNewPass2] = useState('')
 
-  // === Утилита REST
-  async function req(path:string, body:any) {
-    const r = await fetch(`${SUPA}/auth/v1/${path}`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
-      body:JSON.stringify(body)
-    })
-    return r
-  }
-
-  // === Маппер ошибок Supabase Auth -> дружелюбные тексты
-  function parseAuthError(status: number, j: any) {
-    const raw = (j?.error_description || j?.message || j?.msg || "")
-    const msg = String(raw)
-
-    // ЛОГИН
-    if (status === 400 && /(invalid_grant|Invalid login credentials)/i.test(msg)) {
-      return "❌ Неверный email или пароль."
-    }
-    if (/user_not_found|No user found/i.test(msg)) {
-      return "❌ Неверный email или пароль."
-    }
-
-    // РЕГИСТРАЦИЯ
-    if (status === 409 || /already exists|user already registered/i.test(msg)) {
-      return "⚠️ Такой email уже зарегистрирован. Нажмите ‘Вход’ или ‘Сброс пароля’."
-    }
-    if (status === 422 && /password|weak|short/i.test(msg)) {
-      return "🔒 Пароль слишком короткий. Минимум 6 символов (лучше сложнее)."
-    }
-
-    // Другое
-    if (status === 429 || /too many|rate/i.test(msg)) return "⏳ Слишком много попыток. Попробуйте позже."
-    if (status === 400 && /(Email not confirmed|email not confirmed)/i.test(msg)) return "✉️ Подтвердите email — проверьте почту."
-    return (raw || `Ошибка (${status})`)
-  }
-
-  // === Коллбеки OAuth/Recovery
+  // ======= URL callbacks: OAuth / Recovery =======
   useEffect(()=>{
     if (typeof window==='undefined') return
     const hash  = new URLSearchParams(window.location.hash.replace(/^#/, ''))
@@ -68,14 +34,7 @@ export default function AuthPage() {
     const tokenHash       = qs.get('token_hash') || hash.get('token_hash')
     const type            = (hash.get('type') || qs.get('type') || '').toLowerCase()
 
-    // OAuth возврат
-    const oauthAccess = accessFromHash || accessFromQuery
-    if (oauthAccess && type !== 'recovery') {
-      try { localStorage.setItem('jwt', oauthAccess); router.replace('/') } catch(e){ console.error(e) }
-      return
-    }
-
-    // Recovery с access_token
+    // Recovery: access_token в hash/query
     if ((accessFromHash || accessFromQuery) && type === 'recovery') {
       try { localStorage.removeItem('jwt') } catch {}
       setRecoveryToken(accessFromHash || accessFromQuery)
@@ -84,13 +43,13 @@ export default function AuthPage() {
       return
     }
 
-    // Recovery через token_hash -> verify
+    // Recovery: token_hash -> verify
     async function exchangeTokenHash(th: string) {
       try {
         setLoading(true)
         const r = await fetch(`${SUPA}/auth/v1/verify`, {
           method: 'POST',
-          headers: {'Content-Type':'application/json','apikey': ANON,'Authorization': `Bearer ${ANON}`},
+          headers: {'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
           body: JSON.stringify({ type: 'recovery', token_hash: th }),
         })
         const j = await r.json().catch(()=> ({}))
@@ -104,20 +63,25 @@ export default function AuthPage() {
         }
         throw new Error('No access_token in verify response')
       } catch (e:any) {
-        console.error('verify error', e)
         setMsg('Не удалось подтвердить ссылку восстановления: ' + e.message)
       } finally {
         setLoading(false)
       }
     }
-
     if (type === 'recovery' && tokenHash) {
       exchangeTokenHash(tokenHash)
       return
     }
+
+    // Обычный OAuth-возврат (Google / magic link)
+    const oauthAccess = accessFromHash || accessFromQuery
+    if (oauthAccess) {
+      try { localStorage.setItem('jwt', oauthAccess); router.replace('/') } catch(e){ console.error(e) }
+      return
+    }
   },[router, SUPA, ANON])
 
-  // Уже залогинен? — на главную (не мешаем recovery)
+  // Уже залогинен? Уводим на /
   useEffect(()=>{
     try{
       const h = new URLSearchParams(window.location.hash.replace(/^#/, ''))
@@ -128,48 +92,94 @@ export default function AuthPage() {
     }catch{}
   },[router])
 
-  // === ДЕЙСТВИЯ
+  // ======= helpers =======
+  async function req(path:string, body:any) {
+    return await fetch(`${SUPA}/auth/v1/${path}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
+      body:JSON.stringify(body)
+    })
+  }
+  const mapError = (j:ApiError): {code:string; text:string} => {
+    const code = (j.error_code || j.error || j.message || j.msg || '').toString().toLowerCase()
+    if (code.includes('email_not_confirmed') || /not.?confirmed/i.test(j.error_description||'')) {
+      return { code:'email_not_confirmed', text:'Эта почта ещё не подтверждена. Мы можем выслать письмо повторно.' }
+    }
+    if (code.includes('invalid_grant')) {
+      // может быть неверный пароль или несуществующий пользователь
+      return { code:'invalid_grant', text:'Неверный email или пароль.' }
+    }
+    if (code.includes('user_already_exists') || /already.*exist/i.test(j.message||'')) {
+      return { code:'user_already_exists', text:'Такой email уже зарегистрирован. Войдите или восстановите доступ.' }
+    }
+    if (code.includes('weak_password')) {
+      return { code:'weak_password', text:'Пароль слишком простой. Используйте не менее 8 символов, буквы и цифры.' }
+    }
+    if (code.includes('over_email_send_rate_limit') || code.includes('rate')) {
+      return { code:'rate_limit', text:'Слишком много запросов. Попробуйте через минуту.' }
+    }
+    return { code: code || 'unknown', text: j.error_description || j.message || j.msg || 'Неизвестная ошибка. Попробуйте ещё раз.' }
+  }
+
+  // ======= actions =======
   async function login() {
-    setLoading(true); setMsg('')
+    setLoading(true); setMsg(''); setLastErr('')
     try {
-      if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Введите корректный email.")
-      if (!pass) throw new Error("Введите пароль.")
-      const r = await req('token?grant_type=password', { email, password: pass })
-      const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(parseAuthError(r.status, j))
+      const r = await req('token?grant_type=password',{email,password:pass})
+      const j = await r.json()
+      if(!r.ok) {
+        const m = mapError(j); setLastErr(m.code); setMsg(m.text); return
+      }
       localStorage.setItem('jwt', j.access_token)
       router.replace('/')
-    } catch(e:any){ setMsg(e.message || 'Ошибка входа.') }
-    finally{ setLoading(false) }
+    } catch(e:any){
+      setMsg('Ошибка входа: '+e.message)
+    } finally { setLoading(false) }
   }
 
   async function signup() {
-    setLoading(true); setMsg('')
+    setLoading(true); setMsg(''); setLastErr('')
     try {
-      if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Введите корректный email.")
-      if (!pass || pass.length < 6) throw new Error("�� Пароль слишком короткий. Минимум 6 символов.")
-      const r = await req('signup', {
-        email,
-        password: pass,
-        email_redirect_to: (SITE?.endsWith('/auth') ? SITE : (SITE + '/auth')),
-      })
-      const j = await r.json().catch(() => ({}))
-      if (!r.ok) throw new Error(parseAuthError(r.status, j))
-      setMsg(`📨 Письмо для подтверждения отправлено на ${email}. Перейдите по ссылке и затем войдите.`)
-    } catch(e:any){ setMsg(e.message || 'Ошибка регистрации.') }
+      const r = await req('signup',{email,password:pass, email_redirect_to:`${SITE}/auth`})
+      const j = await r.json().catch(()=>({}))
+      if(!r.ok) {
+        const m = mapError(j); setLastErr(m.code); setMsg(m.text); return
+      }
+      // Если включены подтверждения — письма уедут. Говорим об этом явно:
+      setMsg('📨 Мы отправили письмо для подтверждения. Проверьте почту (и спам).')
+    } catch(e:any){
+      setMsg('Ошибка регистрации: '+e.message)
+    } finally { setLoading(false) }
+  }
+
+  async function sendResetLink() {
+    setLoading(true); setMsg(''); setLastErr('')
+    try {
+      const r = await req('recover',{email,redirect_to:`${SITE}/auth`})
+      if(!r.ok) throw new Error(await r.text())
+      setMsg('📨 Ссылка для сброса пароля отправлена. Проверьте почту.')
+    } catch(e:any){ setMsg('Ошибка сброса: '+e.message) }
     finally{ setLoading(false) }
   }
 
-  // без утечки существования
-  async function sendResetLink() {
-    setLoading(true); setMsg('')
+  async function resendConfirm() {
+    if (!email) { setMsg('Укажите email, чтобы выслать подтверждение.'); return }
+    setLoading(true)
     try {
-      if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error("Введите корректный email.")
-      const r = await req('recover',{email,redirect_to: `${SITE}/auth`})
-      if (!r.ok) { await r.text().catch(()=> ''); /* не палим детали */ }
-      setMsg('📨 Если аккаунт существует, письмо для сброса отправлено. Проверьте почту.')
-    } catch(e:any){ setMsg(e.message || 'Ошибка сброса.') }
-    finally{ setLoading(false) }
+      // Supabase REST: resend confirmation email
+      const r = await fetch(`${SUPA}/auth/v1/resend`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
+        body: JSON.stringify({ type:'signup', email, redirect_to: `${SITE}/auth` })
+      })
+      const j = await r.json().catch(()=>({}))
+      if (!r.ok) {
+        const m = mapError(j); setLastErr(m.code); setMsg(m.text); return
+      }
+      setMsg('✅ Письмо отправлено повторно. Проверьте почту (и спам).')
+    } catch(e:any){
+      setMsg('Ошибка при повторной отправке: '+e.message)
+    } finally { setLoading(false) }
   }
 
   async function applyNewPassword() {
@@ -191,15 +201,15 @@ export default function AuthPage() {
     finally{ setLoading(false) }
   }
 
-  const GOOGLE_URL = "/api/google-login"
-
-  // стили
+  // ======= UI =======
   const box = {background:'#0f172a',border:'1px solid #1f2937',borderRadius:12,padding:20,width:'100%',maxWidth:420,margin:'60px auto'} as const
   const input = {background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'10px 12px',width:'100%',marginBottom:10} as const
   const row  = {display:'flex',gap:8,marginBottom:12} as const
   const btn  = {background:'linear-gradient(90deg,#22d3ee,#3b82f6)',color:'#0b1220',fontWeight:700,border:'none',borderRadius:10,padding:'10px 14px',width:'100%',marginTop:4,cursor:'pointer'} as const
   const tabBtn=(active:boolean)=>({flex:1,borderRadius:8,padding:'8px 10px',border:'1px solid #1f2937',background:active?'#111827':'#0b1220',color:'#e5e7eb',cursor:'pointer'}) as const
   const googleBtn={display:'flex',alignItems:'center',gap:10,justifyContent:'center',marginTop:12,background:'#fff',color:'#111827',borderRadius:10,padding:'10px 14px',textDecoration:'none',fontWeight:700,boxShadow:'0 2px 6px rgba(0,0,0,.25)'} as const
+
+  const GOOGLE_URL = "/api/google-login";
 
   return (
     <div style={box}>
@@ -222,7 +232,6 @@ export default function AuthPage() {
             <button onClick={()=>setTab('reset')}  style={tabBtn(tab==='reset')}>Сброс</button>
           </div>
 
-          {/* Обычный вход/регистрация */}
           {tab!=='reset' && (
             <>
               <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
@@ -230,9 +239,8 @@ export default function AuthPage() {
               <button disabled={loading} onClick={tab==='signin'?login:signup} style={btn}>
                 {loading ? '⏳' : tab==='signin' ? 'Войти' : 'Создать аккаунт'}
               </button>
-              {/* глобальные сообщения для входа/регистрации */}
-              {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
 
+              {/* Google OAuth */}
               <a href={GOOGLE_URL} style={googleBtn} target="_self" rel="noopener">
                 <svg style={{width:18,height:18}} viewBox="0 0 48 48" aria-hidden="true">
                   <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.9 0-12.5-5.6-12.5-12.5S17.1 11 24 11c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
@@ -245,13 +253,21 @@ export default function AuthPage() {
             </>
           )}
 
-          {/* Сброс пароля */}
           {tab==='reset' && (
             <>
               <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
               <button disabled={loading} onClick={sendResetLink} style={btn}>{loading ? '⏳' : 'Отправить ссылку'}</button>
-              {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
             </>
+          )}
+
+          {/* Сообщения и ветки ошибок */}
+          {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
+          {lastErr==='email_not_confirmed' && (
+            <div style={{marginTop:8}}>
+              <button disabled={loading} onClick={resendConfirm} style={{...btn, marginTop:8}}>
+                {loading ? '⏳' : 'Выслать подтверждение ещё раз'}
+              </button>
+            </div>
           )}
         </>
       )}
