@@ -168,4 +168,7 @@ const googleBtn = {
   textDecoration: "none",
   fontWeight: 700,
   boxShadow: "0 2px 6px rgba(0,0,0,.25)",
-, position: "relative", zIndex: 9999, pointerEvents: "auto"} as const;
+  position: "relative",
+  zIndex: 9999,
+  pointerEvents: "auto"
+} as const;
