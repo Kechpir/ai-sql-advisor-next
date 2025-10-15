@@ -167,7 +167,7 @@ export default function AuthPage() {
     finally{ setLoading(false) }
   }
 
-  const GOOGLE_URL = `${SUPA}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(SITE)}`
+const GOOGLE_URL = "/api/google-login";
   const box = {background:'#0f172a',border:'1px solid #1f2937',borderRadius:12,padding:20,width:'100%',maxWidth:420,margin:'60px auto'} as const
   const input = {background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'10px 12px',width:'100%',marginBottom:10} as const
   const row  = {display:'flex',gap:8,marginBottom:12} as const
