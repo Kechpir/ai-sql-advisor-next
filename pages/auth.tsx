@@ -44,13 +44,13 @@ export default function AuthPage() {
     }
 
     // Recovery: token_hash -> verify
-    async function exchangeTokenHash(th: string) {
+    async function exchangeTokenHash(th: string, kind?: string) {
       try {
         setLoading(true)
         const r = await fetch(`${SUPA}/auth/v1/verify`, {
           method: 'POST',
           headers: {'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
-          body: JSON.stringify({ type: 'recovery', token_hash: th }),
+          body: JSON.stringify({ type: (kind || 'recovery'), token_hash: th }),
         })
         const j = await r.json().catch(()=> ({}))
         if (!r.ok) throw new Error(j.error_description || j.message || 'Verify failed')
