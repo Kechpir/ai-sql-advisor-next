@@ -252,6 +252,7 @@ export default function AuthPage() {
           )}
         </>
       )}
-    </div>
+      {(!recoveryToken && tab!=='reset') && msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
+</div>
   )
 }
