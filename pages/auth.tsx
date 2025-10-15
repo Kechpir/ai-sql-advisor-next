@@ -1,232 +1,50 @@
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
+import React from "react";
 
 export default function AuthPage() {
-  const router = useRouter()
+  const SITE = process.env.NEXT_PUBLIC_SUPABASE_SITE ?? process.env.NEXT_PUBLIC_SITE_URL ?? 'https://ai-sql-advisor-next.vercel.app';
+  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://zpppzzwaoplfeoiynkam.supabase.co';
+  const googleHref = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(SITE + '/auth')}`;
 
-  const SUPA  = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    const SITE  = process.env.NEXT_PUBLIC_SITE_URL || 'https://ai-sql-advisor-next.vercel.app'
-
-  // tabs: вход/рег/сброс
-  const [tab, setTab] = useState<'signin'|'signup'|'reset'>('signin')
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [msg,  setMsg]  = useState('')
-  const [loading, setLoading] = useState(false)
-
-  // recovery / oauth callback
-  const [recoveryToken, setRecoveryToken] = useState<string | null>(null)
-  const [newPass, setNewPass] = useState('')
-  const [newPass2, setNewPass2] = useState('')
-
-  // 1) Разбор всех вариантов токенов из URL
-  useEffect(()=>{
-    if (typeof window==='undefined') return
-    const hash  = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-    const qs    = new URLSearchParams(window.location.search)
-
-    // что можем получить:
-    const accessFromHash  = hash.get('access_token')
-    const accessFromQuery = qs.get('access_token')
-    const tokenHash       = qs.get('token_hash') || hash.get('token_hash')
-    const type            = (hash.get('type') || qs.get('type') || '').toLowerCase()
-
-    // a) Recovery через access_token (в хеше или query) — сразу показать форму смены пароля
-    if ((accessFromHash || accessFromQuery) && type === 'recovery') {
-      try { localStorage.removeItem('jwt') } catch {}
-      setRecoveryToken(accessFromHash || accessFromQuery)
-      setTab('reset')
-      setMsg('Введите новый пароль и подтвердите.')
-      return
+  // Жёстко уходим в top-окно, если нас вдруг открыли во фрейме
+  const goTop = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (typeof window !== 'undefined' && window.top && window.top !== window) {
+      e.preventDefault();
+      window.top.location.href = googleHref;
     }
-
-    // b) Recovery через token_hash — обмениваем на access_token через /auth/v1/verify
-    async function exchangeTokenHash(th: string) {
-      try {
-        setLoading(true)
-        // REST-аналог supabase.auth.verifyOtp({ type: 'recovery', token_hash })
-        const r = await fetch(`${SUPA}/auth/v1/verify`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'apikey': ANON,
-            'Authorization': `Bearer ${ANON}`,
-          },
-          body: JSON.stringify({ type: 'recovery', token_hash: th }),
-        })
-        const j = await r.json().catch(()=> ({}))
-        if (!r.ok) throw new Error(j.error_description || j.message || 'Verify failed')
-        // j.access_token, j.refresh_token, j.user
-        if (j?.access_token) {
-          try { localStorage.removeItem('jwt') } catch {}
-          setRecoveryToken(j.access_token)
-          setTab('reset')
-          setMsg('Введите новый пароль и подтвердите.')
-          return
-        }
-        throw new Error('No access_token in verify response')
-      } catch (e:any) {
-        console.error('verify error', e)
-        setMsg('Не удалось подтвердить ссылку восстановления: ' + e.message)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    if (type === 'recovery' && tokenHash) {
-      exchangeTokenHash(tokenHash)
-      return
-    }
-
-    // c) Обычный OAuth-возврат (Google / magic link): сохраним access_token и в кабинет
-    const oauthAccess = accessFromHash || accessFromQuery
-    if (oauthAccess) {
-      try { localStorage.setItem('jwt', oauthAccess); router.replace('/') } catch(e){ console.error(e) }
-      return
-    }
-
-  },[router, SUPA, ANON])
-
-  // 2) Редирект на / если уже залогинен (но не во время recovery-экрана)
-  useEffect(()=>{
-    try{
-      const h = new URLSearchParams(window.location.hash.replace(/^#/, ''))
-      const q = new URLSearchParams(window.location.search)
-      const t = (h.get('type') || q.get('type') || '').toLowerCase()
-      if (t === 'recovery') return
-      if (localStorage.getItem('jwt')) router.replace('/')
-    }catch{}
-  },[router])
-
-  async function req(path:string, body:any) {
-    const r = await fetch(`${SUPA}/auth/v1/${path}`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
-      body:JSON.stringify(body)
-    })
-    return r
-  }
-
-  async function login() {
-    setLoading(true); setMsg('')
-    try {
-      const r = await req('token?grant_type=password',{email,password:pass})
-      const j = await r.json()
-      if(!r.ok) throw new Error(j.error_description||j.message)
-      localStorage.setItem('jwt', j.access_token)
-      router.replace('/')
-    } catch(e:any){ setMsg('Ошибка входа: '+e.message) }
-    finally{ setLoading(false) }
-  }
-
-  async function signup() {
-    setLoading(true); setMsg('')
-    try {
-      const r = await req('signup',{email,password:pass})
-      const j = await r.json()
-      if(!r.ok) throw new Error(j.error_description||j.message)
-      setMsg('📨 Проверьте почту для подтверждения.')
-    } catch(e:any){ setMsg('Ошибка регистрации: '+e.message) }
-    finally{ setLoading(false) }
-  }
-
-  // Ссылка для сброса ведёт на /auth: тут мы её ловим (hash/query) и обрабатываем
-  async function sendResetLink() {
-    setLoading(true); setMsg('')
-    try {
-      const r = await req('recover',{email,redirect_to: `${SITE}/auth`})
-      if(!r.ok) throw new Error(await r.text())
-      setMsg('📨 Ссылка для сброса пароля отправлена.')
-    } catch(e:any){ setMsg('Ошибка сброса: '+e.message) }
-    finally{ setLoading(false) }
-  }
-
-  // смена пароля по токену (type=recovery)
-  async function applyNewPassword() {
-    if (!recoveryToken) return setMsg('Нет токена восстановления.')
-    if (!newPass || newPass !== newPass2) return setMsg('Пароли не совпадают.')
-    setLoading(true); setMsg('')
-    try {
-      const r = await fetch(`${SUPA}/auth/v1/user`, {
-        method:'PUT',
-        headers:{
-          'Content-Type':'application/json',
-          'apikey': ANON,
-          'Authorization': `Bearer ${recoveryToken}`,
-        },
-        body: JSON.stringify({ password: newPass })
-      })
-      const j = await r.json().catch(()=> ({}))
-      if(!r.ok) throw new Error(j.error_description||j.message||'Ошибка смены пароля')
-      // пароль обновлён: сохраняем токен и в кабинет
-      localStorage.setItem('jwt', recoveryToken)
-      setMsg('✅ Пароль обновлён')
-      router.replace('/')
-    } catch(e:any){ setMsg(e.message) }
-    finally{ setLoading(false) }
-  }
-
-  const GOOGLE_URL = `${SUPA}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(SITE)}`
-  const box = {background:'#0f172a',border:'1px solid #1f2937',borderRadius:12,padding:20,width:'100%',maxWidth:420,margin:'60px auto'} as const
-  const input = {background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'10px 12px',width:'100%',marginBottom:10} as const
-  const row  = {display:'flex',gap:8,marginBottom:12} as const
-  const btn  = {background:'linear-gradient(90deg,#22d3ee,#3b82f6)',color:'#0b1220',fontWeight:700,border:'none',borderRadius:10,padding:'10px 14px',width:'100%',marginTop:4,cursor:'pointer'} as const
-  const tabBtn=(active:boolean)=>({flex:1,borderRadius:8,padding:'8px 10px',border:'1px solid #1f2937',background:active?'#111827':'#0b1220',color:'#e5e7eb',cursor:'pointer'}) as const
-  const googleBtn={display:'flex',alignItems:'center',gap:10,justifyContent:'center',marginTop:12,background:'#fff',color:'#111827',borderRadius:10,padding:'10px 14px',textDecoration:'none',fontWeight:700,boxShadow:'0 2px 6px rgba(0,0,0,.25)'} as const
+  };
 
   return (
-    <div style={box}>
-      <h2 style={{marginTop:0}}>🧠 AI SQL Advisor</h2>
-      <p style={{opacity:.7,marginTop:-8,marginBottom:20}}>Вход / Регистрация / Сброс</p>
+    <main style={{minHeight:'100vh',display:'grid',placeItems:'center',background:'#0b0d12',color:'#e6e7ea',padding:'24px'}}>
+      <div style={{width:'100%',maxWidth:420,background:'#11141a',border:'1px solid #1c2330',borderRadius:16,padding:24,boxShadow:'0 8px 24px rgba(0,0,0,.35)'}}>
+        <h1 style={{margin:'0 0 12px',fontSize:24,fontWeight:700}}>Вход / Регистрация</h1>
+        <p style={{margin:'0 0 20px',opacity:.8,fontSize:14}}>Продолжаем через Google — безопасно, быстро, без localhost.</p>
 
-      {/* Экран смены пароля (recovery) */}
-      {recoveryToken ? (
-        <>
-          <input style={input} placeholder="Новый пароль" type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} />
-          <input style={input} placeholder="Повторите пароль" type="password" value={newPass2} onChange={e=>setNewPass2(e.target.value)} />
-          <button disabled={loading} onClick={applyNewPassword} style={btn}>{loading ? '⏳' : 'Обновить пароль'}</button>
-          {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
-        </>
-      ) : (
-        <>
-          <div style={row}>
-            <button onClick={()=>setTab('signin')} style={tabBtn(tab==='signin')}>Вход</button>
-            <button onClick={()=>setTab('signup')} style={tabBtn(tab==='signup')}>Регистрация</button>
-            <button onClick={()=>setTab('reset')}  style={tabBtn(tab==='reset')}>Сброс</button>
+        <a
+          id="google-oauth"
+          href={googleHref}
+          target="_top"
+          rel="noopener noreferrer"
+          onClick={goTop}
+          style={{
+            display:'inline-flex',alignItems:'center',justifyContent:'center',
+            width:'100%',height:44,borderRadius:12,textDecoration:'none',
+            border:'1px solid #2a3446',background:'#0f62fe',color:'#fff',
+            fontWeight:600,letterSpacing:0.2
+          }}
+        >
+          Войти через Google
+        </a>
+
+        <div style={{marginTop:14,fontSize:12,opacity:.7,lineHeight:1.4}}>
+          Если кнопка не открывает окно входа — обнови страницу (Ctrl+F5) или открой в инкогнито.
+        </div>
+
+        <noscript>
+          <div style={{marginTop:12,color:'#fca5a5'}}>
+            Для входа нужен JavaScript. Или перейди вручную: {googleHref}
           </div>
-
-          {/* Обычный вход/регистрация */}
-          {tab!=='reset' && (
-            <>
-              <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-              <input style={input} placeholder="Пароль" type="password" value={pass} onChange={e=>setPass(e.target.value)} />
-              <button disabled={loading} onClick={tab==='signin'?login:signup} style={btn}>
-                {loading ? '⏳' : tab==='signin' ? 'Войти' : 'Создать аккаунт'}
-              </button>
-
-              <a href={GOOGLE_URL} style={googleBtn} target="_self" rel="noopener">
-                <svg style={{width:18,height:18}} viewBox="0 0 48 48" aria-hidden="true">
-                  <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.9 0-12.5-5.6-12.5-12.5S17.1 11 24 11c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
-                  <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.9 16.5 19 14 24 14c3.2 0 6.1 1.2 8.3 3.2l5.7-5.7C34.6 5.2 29.6 3 24 3 16 3 9 7.4 6.3 14.7z"/>
-                  <path fill="#4CAF50" d="M24 45c5.4 0 10.3-1.8 14.1-4.9l-6.5-5.4C29.6 36.5 26.9 37.5 24 37.5c-5.2 0-9.6-3.3-11.2-8.1l-6.6 5.1C8.9 41.1 15.9 45 24 45z"/>
-                  <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-1.2 3.4-3.8 6.1-7 7.6l6.5 5.4C38.3 39.2 42 32.6 42 24c0-1.3-.1-2.6-.4-3.5z"/>
-                </svg>
-                <span>Continue with Google</span>
-              </a>
-            </>
-          )}
-
-          {/* Обычный "Сброс пароля" (отправка письма) */}
-          {tab==='reset' && (
-            <>
-              <input style={input} placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
-              <button disabled={loading} onClick={sendResetLink} style={btn}>{loading ? '⏳' : 'Отправить ссылку'}</button>
-              {msg && <div style={{marginTop:12,opacity:.9}}>{msg}</div>}
-            </>
-          )}
-        </>
-      )}
-    </div>
-  )
+        </noscript>
+      </div>
+    </main>
+  );
 }
