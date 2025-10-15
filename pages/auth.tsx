@@ -6,7 +6,7 @@ export default function AuthPage() {
 
   const SUPA  = process.env.NEXT_PUBLIC_SUPABASE_URL!
   const ANON  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  const SITE  = process.env.NEXT_PUBLIC_SITE_URL || (typeof window!=='undefined'?window.location.origin:'')
+    const SITE  = process.env.NEXT_PUBLIC_SITE_URL || 'https://ai-sql-advisor-next.vercel.app'
 
   // tabs: вход/рег/сброс
   const [tab, setTab] = useState<'signin'|'signup'|'reset'>('signin')
