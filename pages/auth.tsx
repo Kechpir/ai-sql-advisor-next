@@ -75,6 +75,14 @@ export default function AuthPage() {
 
     // Обычный OAuth-возврат (Google / magic link)
     const oauthAccess = accessFromHash || accessFromQuery
+    // NEW: handle signup-confirmation redirect
+    if ((accessFromHash || accessFromQuery) && type === "signup") {
+      try {
+        localStorage.setItem("jwt", accessFromHash || accessFromQuery);
+        router.replace("/");
+        return;
+      } catch(e) { console.error(e); }
+    }
     if (oauthAccess) {
       try { localStorage.setItem('jwt', oauthAccess); router.replace('/') } catch(e){ console.error(e) }
       return
