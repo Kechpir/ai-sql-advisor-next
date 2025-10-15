@@ -2,30 +2,35 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 
 export default function AuthPage() {
-  const router = useRouter()
-  useEffect(()=>{
-    try{ if(localStorage.getItem('jwt')) router.replace('/') }catch{}
-  },[router])
+  // Навешиваем редирект на кнопку "Continue with Google" или "Войти через Google"
+  React.useEffect(() => {
+    const els = Array.from(document.querySelectorAll("button, a, div, span"));
+    const btn = els.find((el) => {
+      const t = (el.textContent || "").trim();
+      return /^(Continue with Google|Войти через Google)$/i.test(t);
+    });
+    if (btn) {
+      btn.addEventListener(
+        "click",
+        (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (typeof window !== "undefined") {
+            (window.top ?? window).location.href = "/api/google-login";
+          }
+        },
+        { capture: true }
+      );
+    }
+  }, []);
 
-  const [tab, setTab] = useState<'signin'|'signup'|'reset'>('signin')
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const [msg, setMsg] = useState('')
-  const [loading, setLoading] = useState(false)
+  const router = useRouter();
+  React.useEffect(() => {
+    try {
+      if (localStorage.getItem("jwt")) router.replace("/");
+    } catch {}
+  }, [router]);
 
-  const SUPA = process.env.NEXT_PUBLIC_SUPABASE_URL!
-  const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  const SITE = process.env.NEXT_PUBLIC_SITE_URL || (typeof window!=='undefined'?window.location.origin:'')
-  const GOOGLE_URL = `${SUPA}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(SITE)}`
-
-  async function req(path:string, body:any) {
-    const r = await fetch(`${SUPA}/auth/v1/${path}`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json','apikey':ANON,'Authorization':`Bearer ${ANON}`},
-      body:JSON.stringify(body)
-    })
-    return r
-  }
 
   async function login() {
     setLoading(true); setMsg('')
