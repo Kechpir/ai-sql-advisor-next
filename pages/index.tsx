@@ -4,6 +4,9 @@ import DbConnect from './components/DbConnect'
 import SchemasManager from './components/SchemasManager'
 import { generateSql, saveSchema } from '../lib/api'
 
+/** --- helpers --- */
+const DANGER_RE = /\b(DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|DELETE|UPDATE|INSERT|MERGE)\b/i;
+
 function annotate(sql: string) {
   const up = sql.toUpperCase()
   const notes:string[] = []
@@ -16,12 +19,38 @@ function annotate(sql: string) {
   return notes.length ? `/* Пояснения:\n${notes.join('\n')}\n*/\n` + sql : sql
 }
 
+function wrapWithTransactionalGuard(sql: string) {
+  // Ничего не “чиним”, просто предлагаем безопасный каркас с возможностью отката.
+  return [
+    `-- ⚠️ ТРАНЗАКЦИОННЫЙ ВАРИАНТ С SAVEPOINT (для безопасного отката):`,
+    `BEGIN;`,
+    `SAVEPOINT user_guard;`,
+    ``,
+    `${sql};`,
+    ``,
+    `-- Если что-то пошло не так:`,
+    `-- ROLLBACK TO SAVEPOINT user_guard;`,
+    `-- Иначе зафиксируйте изменения:`,
+    `COMMIT;`
+  ].join('\n');
+}
+
+async function copy(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export default function Home() {
   const router = useRouter()
   const [tab, setTab] = useState<'scan'|'saved'>('scan')
   const [schemaJson, setSchemaJson] = useState<any|null>(null)
   const [nl, setNl] = useState('')
   const [generatedSql, setGeneratedSql] = useState<string|null>(null)
+  const [danger, setDanger] = useState<boolean>(false)
   const [explain, setExplain] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saveName, setSaveName] = useState('')
@@ -47,7 +76,9 @@ export default function Home() {
       const data = await generateSql(nl.trim(), schemaJson, 'postgres')
       if (data.blocked) { toast('err','🚫 Запрос заблокирован политикой'); return }
       const sql = String(data.sql || '')
-      setGeneratedSql(explain ? annotate(sql) : sql)
+      const finalSql = explain ? annotate(sql) : sql
+      setGeneratedSql(finalSql)
+      setDanger(DANGER_RE.test(sql))
     } catch (e:any) { console.error(e); toast('err','Ошибка генерации') }
     finally { setLoading(false) }
   }
@@ -65,6 +96,9 @@ export default function Home() {
   // Пока проверяем сессию — показываем скелет
   if (signedIn === null) return <div style={{padding:24,color:'#e5e7eb'}}>Загрузка…</div>
   if (signedIn === false) return null
+
+  const plainSql = generatedSql ?? ''
+  const transactionalSql = generatedSql ? wrapWithTransactionalGuard(generatedSql) : ''
 
   return (
     <div>
@@ -149,9 +183,55 @@ export default function Home() {
               <button onClick={onGenerate} disabled={loading} style={btnMain}>
                 {loading ? '⏳ Генерируем…' : 'Сгенерировать'}
               </button>
-              <button onClick={()=>{setGeneratedSql(null);setNl('')}} style={btnSec}>Очистить</button>
+              <button onClick={()=>{setGeneratedSql(null);setDanger(false);setNl('')}} style={btnSec}>Очистить</button>
             </div>
-            {generatedSql && <pre style={{...pre,marginTop:16}}>{generatedSql}</pre>}
+
+            {/* Результаты */}
+            {generatedSql && (
+              <div style={{marginTop:16,display:'grid',gap:12}}>
+                {danger && (
+                  <div style={{
+                    border:'1px solid #ef444460',
+                    background:'#ef444420',
+                    color:'#fecaca',
+                    borderRadius:12,
+                    padding:'10px 12px',
+                    fontWeight:600
+                  }}>
+                    ВНИМАНИЕ: Запрос содержит потенциально опасные операции (DROP/ALTER/TRUNCATE/CREATE/GRANT/REVOKE/DELETE/UPDATE/INSERT/MERGE).
+                    Проверьте условия, права и резервные копии перед выполнением.
+                  </div>
+                )}
+
+                {/* Обычный вариант */}
+                <div style={resultCard}>
+                  <div style={resultHdr}>
+                    <span>Обычный вариант</span>
+                    <button
+                      onClick={async ()=> (await copy(plainSql)) ? toast('ok','Скопировано') : toast('err','Не удалось скопировать')}
+                      style={copyBtn}
+                    >
+                      Скопировать
+                    </button>
+                  </div>
+                  <pre style={pre}>{plainSql}</pre>
+                </div>
+
+                {/* Транзакционный вариант */}
+                <div style={resultCard}>
+                  <div style={resultHdr}>
+                    <span>Вариант с SAVEPOINT (рекомендуется для опасных операций)</span>
+                    <button
+                      onClick={async ()=> (await copy(transactionalSql)) ? toast('ok','Скопировано') : toast('err','Не удалось скопировать')}
+                      style={copyBtn}
+                    >
+                      Скопировать
+                    </button>
+                  </div>
+                  <pre style={pre}>{transactionalSql}</pre>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -175,3 +255,28 @@ const btnMain={background:'linear-gradient(90deg,#22d3ee,#3b82f6)',color:'#0b122
 const btnSec={background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:12,padding:'10px 14px',cursor:'pointer'}
 const badge={background:'#10b98120',color:'#065f46',padding:'4px 10px',borderRadius:999,fontSize:12,border:'1px solid #10b98150'}
 const pre={whiteSpace:'pre-wrap',background:'#0b1220',border:'1px solid #1f2937',borderRadius:12,padding:12,fontSize:13}
+
+const resultCard = {
+  border:'1px solid #1f2937',
+  borderRadius:12,
+  background:'#0b1220',
+  padding:12
+} as const
+
+const resultHdr = {
+  display:'flex',
+  justifyContent:'space-between',
+  alignItems:'center',
+  marginBottom:8,
+  color:'#e5e7eb',
+  fontWeight:600
+} as const
+
+const copyBtn = {
+  background:'#111827',
+  color:'#e5e7eb',
+  border:'1px solid #374151',
+  borderRadius:10,
+  padding:'6px 10px',
+  cursor:'pointer'
+} as const
