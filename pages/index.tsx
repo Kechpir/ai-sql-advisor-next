@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/router'
+import SqlResult from "@/components/SqlResult";
 import DbConnect from './components/DbConnect'
 import SchemasManager from './components/SchemasManager'
 import { generateSql, saveSchema } from '../lib/api'
