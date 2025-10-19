@@ -1,3 +1,4 @@
+import { useRouter } from "next/router";
 import { useState, useEffect } from 'react'
 import SqlResult from "../components/SqlResult";
 import DbConnect from './components/DbConnect'
