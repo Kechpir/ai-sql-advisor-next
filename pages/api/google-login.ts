@@ -1,11 +1,36 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+// pages/api/google-login.ts
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { createClient } from '@supabase/supabase-js'
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpppzzwaoplfeoiynkam.supabase.co";
-  const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://ai-sql-advisor-next.vercel.app";
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // 1) Динамический origin (работает для stage/prod/localhost)
+  const proto =
+    (req.headers['x-forwarded-proto'] as string) ||
+    (req.headers['x-forwarded-protocol'] as string) ||
+    'https'
+  const host =
+    (req.headers['x-forwarded-host'] as string) ||
+    req.headers.host ||
+    'localhost:3000'
+  const origin = `${proto}://${host}`
 
-  const redirect = `${SUPABASE_URL}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(SITE_URL + "/auth")}`;
+  // 2) Куда вернуться после OAuth
+  const redirectTo = `${origin}/auth`
 
-  res.writeHead(302, { Location: redirect });
-  res.end();
+  // 3) Подключаемся к Supabase (как в остальном фронте)
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+  // 4) Получаем ссылку на Google OAuth с корректным redirectTo
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  })
+
+  if (error) {
+    return res.status(400).json({ error: error.message })
+  }
+  // 5) Редиректим пользователя на страницу Google
+  return res.redirect(data.url)
 }
