@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import SqlResult from "@/components/SqlResult";
+import SqlResult from "../components/SqlResult";
 import DbConnect from './components/DbConnect'
 import SchemasManager from './components/SchemasManager'
 import { generateSql, saveSchema } from '../lib/api'
