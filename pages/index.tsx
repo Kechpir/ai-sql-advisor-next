@@ -20,29 +20,8 @@ function annotate(sql: string) {
   return notes.length ? `/* Пояснения:\n${notes.join('\n')}\n*/\n` + sql : sql
 }
 
-function wrapWithTransactionalGuard(sql: string) {
-  // Ничего не “чиним”, просто предлагаем безопасный каркас с возможностью отката.
-  return [
-    `-- ⚠️ ТРАНЗАКЦИОННЫЙ ВАРИАНТ С SAVEPOINT (для безопасного отката):`,
-    `BEGIN;`,
-    `SAVEPOINT user_guard;`,
-    ``,
-    `${sql};`,
-    ``,
-    `-- Если что-то пошло не так:`,
-    `-- ROLLBACK TO SAVEPOINT user_guard;`,
-    `-- Иначе зафиксируйте изменения:`,
-    `COMMIT;`
-  ].join('\n');
-}
-
 async function copy(text: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-    return true;
-  } catch {
-    return false;
-  }
+  try { await navigator.clipboard.writeText(text); return true; } catch { return false; }
 }
 
 export default function Home() {
@@ -51,7 +30,13 @@ export default function Home() {
   const [schemaJson, setSchemaJson] = useState<any|null>(null)
   const [nl, setNl] = useState('')
   const [generatedSql, setGeneratedSql] = useState<string|null>(null)
+
+  // показывать ли предупреждение вверху (локальная подстраховка, но опираемся на ответ API)
   const [danger, setDanger] = useState<boolean>(false)
+
+  // SAVEPOINT-версия из API (появляется ТОЛЬКО при опасных запросах)
+  const [savepointSql, setSavepointSql] = useState<string|null>(null)
+
   const [explain, setExplain] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saveName, setSaveName] = useState('')
@@ -79,7 +64,11 @@ export default function Home() {
       const sql = String(data.sql || '')
       const finalSql = explain ? annotate(sql) : sql
       setGeneratedSql(finalSql)
-      setDanger(DANGER_RE.test(sql))
+
+      // Определяем опасность: по ответу API (withSafety/variantSavepoint), плюс локальный RE как запасной план
+      const apiSavepoint: string | null = (data?.withSafety ?? data?.variantSavepoint ?? null) || null
+      setSavepointSql(apiSavepoint)
+      setDanger(!!apiSavepoint || DANGER_RE.test(sql))
     } catch (e:any) { console.error(e); toast('err','Ошибка генерации') }
     finally { setLoading(false) }
   }
@@ -99,7 +88,6 @@ export default function Home() {
   if (signedIn === false) return null
 
   const plainSql = generatedSql ?? ''
-  const transactionalSql = generatedSql ? wrapWithTransactionalGuard(generatedSql) : ''
 
   return (
     <div>
@@ -109,9 +97,7 @@ export default function Home() {
           <span style={{opacity:.85}}>{signedIn ? 'Signed in' : 'Guest'}</span>
           {signedIn && (
             <button
-              onClick={()=>{
-                try { localStorage.removeItem('jwt'); location.reload() } catch(e){ console.error(e) }
-              }}
+              onClick={()=>{ try { localStorage.removeItem('jwt'); location.reload() } catch(e){ console.error(e) } }}
               style={{background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:10,padding:'6px 10px',cursor:'pointer'}}
             >Sign out</button>
           )}
@@ -184,7 +170,7 @@ export default function Home() {
               <button onClick={onGenerate} disabled={loading} style={btnMain}>
                 {loading ? '⏳ Генерируем…' : 'Сгенерировать'}
               </button>
-              <button onClick={()=>{setGeneratedSql(null);setDanger(false);setNl('')}} style={btnSec}>Очистить</button>
+              <button onClick={()=>{setGeneratedSql(null);setDanger(false);setSavepointSql(null);setNl('')}} style={btnSec}>Очистить</button>
             </div>
 
             {/* Результаты */}
@@ -199,7 +185,7 @@ export default function Home() {
                     padding:'10px 12px',
                     fontWeight:600
                   }}>
-                    ВНИМАНИЕ: Запрос содержит потенциально опасные операции (DROP/ALTER/TRUNCATE/CREATE/GRANT/REVOKE/DELETE/UPDATE/INSERT/MERGE).
+                    ВНИМАНИЕ: Запрос может содержать потенциально опасные операции (DROP/ALTER/TRUNCATE/CREATE/GRANT/REVOKE/DELETE/UPDATE/INSERT/MERGE).
                     Проверьте условия, права и резервные копии перед выполнением.
                   </div>
                 )}
@@ -218,19 +204,21 @@ export default function Home() {
                   <pre style={pre}>{plainSql}</pre>
                 </div>
 
-                {/* Транзакционный вариант */}
-                <div style={resultCard}>
-                  <div style={resultHdr}>
-                    <span>Вариант с SAVEPOINT (рекомендуется для опасных операций)</span>
-                    <button
-                      onClick={async ()=> (await copy(transactionalSql)) ? toast('ok','Скопировано') : toast('err','Не удалось скопировать')}
-                      style={copyBtn}
-                    >
-                      Скопировать
-                    </button>
+                {/* Вариант с SAVEPOINT — показываем ТОЛЬКО если пришёл из API */}
+                {savepointSql && (
+                  <div style={resultCard}>
+                    <div style={resultHdr}>
+                      <span>Вариант с SAVEPOINT (рекомендуется для опасных операций)</span>
+                      <button
+                        onClick={async ()=> (await copy(savepointSql)) ? toast('ok','Скопировано') : toast('err','Не удалось скопировать')}
+                        style={copyBtn}
+                      >
+                        Скопировать
+                      </button>
+                    </div>
+                    <pre style={pre}>{savepointSql}</pre>
                   </div>
-                  <pre style={pre}>{transactionalSql}</pre>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -255,7 +243,7 @@ const input={background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',bor
 const btnMain={background:'linear-gradient(90deg,#22d3ee,#3b82f6)',color:'#0b1220',fontWeight:700,border:'none',borderRadius:12,padding:'10px 14px',cursor:'pointer'}
 const btnSec={background:'#0b1220',color:'#e5e7eb',border:'1px solid #1f2937',borderRadius:12,padding:'10px 14px',cursor:'pointer'}
 const badge={background:'#10b98120',color:'#065f46',padding:'4px 10px',borderRadius:999,fontSize:12,border:'1px solid #10b98150'}
-const pre={whiteSpace:'pre-wrap',background:'#0b1220',border:'1px solid #1f2937',borderRadius:12,padding:12,fontSize:13}
+const pre={whiteSpace:'pre-wrap',background:'#0b1220',border:'1px solid '#1f2937',borderRadius:12,padding:12,fontSize:13}
 
 const resultCard = {
   border:'1px solid #1f2937',
