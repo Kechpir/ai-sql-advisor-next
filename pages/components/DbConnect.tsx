@@ -1,6 +1,9 @@
 import { useState } from 'react'
-import { fetchSchema } from '../../lib/api'
+import { fetchSchema } from '../lib/api'
 import SqlDialectSelect from './SqlDialectSelect'
+
+
+
 
 export default function DbConnect({
   onLoaded,
@@ -18,9 +21,9 @@ export default function DbConnect({
     if (!dbUrl.trim()) return onToast?.('warn', 'Введите строку подключения')
     setLoading(true)
     try {
-      const data = await fetchSchema(dbUrl, schemaName, dialect)
+      const data = await fetchSchema(dbUrl, schemaName)
       onLoaded(data, dialect)
-      onToast?.('ok', `Схема загружена ✅ (SQL: ${dialect})`)
+      onToast?.('ok', `Схема загружена ✅ (${dialect})`)
     } catch (e) {
       console.error('fetch_schema error', e)
       onToast?.('err', 'Ошибка загрузки схемы')
@@ -52,8 +55,8 @@ export default function DbConnect({
         style={inputStyle}
       />
 
-      {/* 👇 Селектор SQL диалекта */}
-      <SqlDialectSelect value={dialect} onChange={setDialect} />
+      {/* 👇 Выбор SQL диалекта */}
+      <SqlDialectSelect dialect={dialect} onChange={setDialect} />
 
       <button
         onClick={handleFetch}
