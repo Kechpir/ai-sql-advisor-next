@@ -1,7 +1,7 @@
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 // import SqlResult from "../components/SqlResult"; // больше не нужен
-import DbConnect from "./components/DbConnect";
+import DbConnect from "../components/DbConnect";
 import SchemasManager from "./components/SchemasManager";
 import { generateSql, saveSchema } from "../lib/api";
 

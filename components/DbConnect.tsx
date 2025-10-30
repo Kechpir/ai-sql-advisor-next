@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { fetchSchema } from '../lib/api'
-import SqlDialectSelect from './SqlDialectSelect'
+import SqlDialectSelect from '../pages/components/SqlDialectSelect'
 
 
 
