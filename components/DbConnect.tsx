@@ -57,7 +57,8 @@ export default function DbConnect({
       />
 
       {/* 👇 Выбор SQL диалекта */}
-      <SqlDialectSelect dialect={dialect} onChange={setDialect} />
+      <SqlDialectSelect value={dialect} onChange={setDialect} />
+
 
       <button
         onClick={handleFetch}
