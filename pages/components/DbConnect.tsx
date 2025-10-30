@@ -1,24 +1,26 @@
 import { useState } from 'react'
 import { fetchSchema } from '../../lib/api'
+import { SqlDialectSelect } from './SqlDialectSelect'
 
 export default function DbConnect({
   onLoaded,
   onToast,
 }: {
-  onLoaded: (schema: any) => void
+  onLoaded: (schema: any, dialect: string) => void
   onToast?: (type: 'ok' | 'warn' | 'err', text: string) => void
 }) {
   const [dbUrl, setDbUrl] = useState('')
   const [schemaName, setSchemaName] = useState('public')
   const [loading, setLoading] = useState(false)
+  const [dialect, setDialect] = useState('postgres')
 
   const handleFetch = async () => {
     if (!dbUrl.trim()) return onToast?.('warn', 'Введите строку подключения')
     setLoading(true)
     try {
       const data = await fetchSchema(dbUrl, schemaName)
-      onLoaded(data)
-      onToast?.('ok', 'Схема загружена ✅')
+      onLoaded(data, dialect)
+      onToast?.('ok', `Схема загружена ✅ (${dialect})`)
     } catch (e) {
       console.error('fetch_schema error', e)
       onToast?.('err', 'Ошибка загрузки схемы')
@@ -49,6 +51,10 @@ export default function DbConnect({
         onChange={(e) => setSchemaName(e.target.value)}
         style={inputStyle}
       />
+
+      {/* 👇 Выбор SQL диалекта */}
+      <SqlDialectSelect dialect={dialect} onChange={setDialect} />
+
       <button
         onClick={handleFetch}
         disabled={loading}
