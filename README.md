@@ -1,153 +1,125 @@
-
-
----
-
 ## 🧠 AI SQL Advisor
 
-> 💬 Умный AI-помощник для написания SQL-запросов.
-> Подключается к любой базе данных в режиме read-only, читает структуру таблиц
-> и генерирует безопасные SQL-запросы на основе естественного языка.
+> Умный AI-помощник для генерации SQL-запросов из естественного языка.
+> Подключается к вашей базе (Postgres / MySQL), анализирует структуру таблиц и предлагает безопасные SQL-запросы в read-only режиме.
 
 ---
 
-### 🚀 Что делает
+### 🚀 Основные возможности
 
-* Подключается к **любой SQL-базе** (PostgreSQL, MySQL и др.)
-* Считывает структуру таблиц (`fetch_schema`)
-* Генерирует корректные SQL-запросы на основе этой структуры (`generate_sql`)
-* Гарантирует **read-only безопасность** (блокирует DROP/DELETE/ALTER/и т.д.)
-* Работает полностью в **облаке** (Supabase + OpenAI + Neon)
+* 🔍 Чтение схемы БД без доступа к данным
+* 💬 Генерация SQL-запросов на основе текстового описания
+* 🧱 Проверка и обёртка опасных операций (`DROP`, `DELETE`, `ALTER`, …)
+* 🔒 Read-only безопасность: SQL никогда не выполняется автоматически
+* ☁️ Полностью облачная архитектура (Supabase + OpenAI + Neon + Vercel)
 
 ---
 
-### 🧩 Архитектура
+### 🧩 Архитектура проекта
 
 ```
 [Пользователь]
    ↓
-[Streamlit или DBeaver Plugin]
+[Next.js UI (Vercel)]
    ↓
 [Supabase Edge Functions]
-   ├── fetch_schema → считывает структуру таблиц
-   └── generate_sql → генерирует SQL через OpenAI
+   ├── fetch_schema — получает структуру БД
+   └── generate_sql — создаёт безопасный SQL через OpenAI
    ↓
-[Внешняя SQL база (PostgreSQL / MySQL)]
+[База данных (PostgreSQL / MySQL)]
    ↓
-[OpenAI API]
+[OpenAI API — GPT-4o]
 ```
 
 ---
 
 ### ⚙️ Технологии
 
-| Компонент        | Инструмент                                                    |
-| ---------------- | ------------------------------------------------------------- |
-| Хостинг функций  | Supabase Edge Functions                                       |
-| Язык backend     | Deno (TypeScript)                                             |
-| Хранилище данных | Neon.tech (PostgreSQL)                                        |
-| AI-мозг          | OpenAI API (GPT-4o)                                           |
-| Интерфейс        | Streamlit (веб-панель)                                        |
-| Репозиторий      | [GitHub — Kechpir](https://github.com/Kechpir/ai-sql-advisor) |
+| Компонент      | Стек / Сервис                  |
+| -------------- | ------------------------------ |
+| Frontend       | Next.js (TypeScript, Vercel)   |
+| Backend        | Supabase Edge Functions (Deno) |
+| База данных    | Neon.tech (PostgreSQL)         |
+| AI-движок      | OpenAI API (GPT-4o)            |
+| Аутентификация | Supabase Auth (Email / Google) |
+| Деплой         | GitHub → Vercel                |
 
 ---
 
-### 🧱 Установка (локально)
-
-```bash
-# клонируем репозиторий
-git clone https://github.com/Kechpir/ai-sql-advisor.git
-cd ai-sql-advisor
-
-# установка Supabase CLI (если нет)
-npm install -g supabase
-
-# логин
-supabase login
-
-# привязка к проекту
-supabase link --project-ref zpppzzwaoplfeoiynkam
-```
-
----
-
-### 🧩 Деплой функций
-
-```bash
-# деплой AI-генератора
-supabase functions deploy generate_sql
-
-# деплой функции чтения схемы
-supabase functions deploy fetch_schema
-```
-
----
-
-### 🧪 Пример вызова API
+### 🧪 Пример использования API
 
 **POST** `/functions/v1/generate_sql`
 
 ```json
 {
-  "nl": "Покажи имена и email всех клиентов, сделавших заказ за последние 7 дней",
-  "schema": { "...": "JSON, возвращённый функцией fetch_schema" }
+  "nl": "Покажи всех пользователей, оформивших заказ за последние 3 дня",
+  "schema": { "...": "структура, полученная через fetch_schema" }
 }
 ```
 
-**Response:**
+**Ответ:**
 
 ```json
 {
-  "sql": "SELECT c.name, c.email FROM customers c JOIN orders o ON c.id = o.customer_id WHERE o.created_at > NOW() - INTERVAL '7 days';",
-  "blocked": false
+  "sql": "SELECT u.name, u.email FROM users u JOIN orders o ON u.id = o.user_id WHERE o.created_at > NOW() - INTERVAL '3 days';",
+  "withSafety": "BEGIN; SAVEPOINT safe; ... ROLLBACK TO SAVEPOINT safe; COMMIT;",
+  "warnings": [],
+  "usage": { "total_tokens": 932 }
 }
 ```
 
 ---
 
-### 💰 Монетизация (в планах)
+### 🧱 Локальный запуск (для разработчиков)
 
-* Подписка $20/мес:
-  $10 — OpenAI токены, $10 — прибыль
-* Авторизация через Supabase Auth
-* Оплата Stripe / PayPal
-* Тарифы: Free / Pro / Team
+```bash
+# клонируем репозиторий backend
+git clone https://github.com/Kechpir/ai-sql-advisor-backend.git
+cd ai-sql-advisor-backend
 
----
+# установка Supabase CLI
+npm install -g supabase
 
-### 🔒 Безопасность
+# вход в CLI
+supabase login
 
-* Только **read-only подключение**
-* SQL никогда не выполняется автоматически
-* Блокируются опасные операторы (DROP, DELETE, ALTER и т.д.)
-* Пароли не сохраняются, используются только в момент запроса
+# деплой функций
+supabase functions deploy fetch_schema
+supabase functions deploy generate_sql
+```
+
+> ⚠️ В README не указываем `project-ref` — используйте свой идентификатор из Supabase Dashboard.
 
 ---
 
 ### 🧭 Дорожная карта
 
-| Этап                      | Статус       |
-| ------------------------- | ------------ |
-| ✅ Подключение Neon DB     | готово       |
-| ✅ Supabase Edge Functions | готово       |
-| ✅ Интеграция OpenAI       | готово       |
-| 🚧 Streamlit UI           | в разработке |
-| 🔜 Авторизация и биллинг  | планируется  |
+| Этап                           | Статус       |
+| ------------------------------ | ------------ |
+| ✅ Генерация SQL                | готово       |
+| ✅ Безопасная обёртка SAVEPOINT | готово       |
+| ✅ Supabase Edge Functions      | готово       |
+| 🚧 UI на Next.js               | доработка UX |
+| 🔜 Авторизация и биллинг       | планируется  |
+| 🔜 Тарифы и Stripe интеграция  | планируется  |
+
+---
+
+### 🔒 Безопасность
+
+* Только **read-only** операции
+* SQL-запросы **не исполняются** автоматически
+* Опасные выражения помечаются и оборачиваются в транзакцию
+* Секреты хранятся в **Supabase Secrets**
+* Публичные ключи (anon) можно коммитить, приватные — нет
 
 ---
 
 ### ✨ Автор
 
-**Kechpir** — QA-инженер и разработчик, создающий AI-инструменты для автоматизации работы с базами данных.
-Проект создан в 2025 году.
+**Kechpir** — QA-инженер и разработчик, создающий AI-инструменты для безопасной работы с базами данных.
+📦 [GitHub → Kechpir](https://github.com/Kechpir)
+🌐 [Vercel Demo → ai-sql-advisor-next.vercel.app](https://ai-sql-advisor-next.vercel.app)
 
 ---
 
-Когда вставишь и сохранишь этот файл, сделай:
-
-```powershell
-git add README.md
-git commit -m "Added project README"
-git push
-```
-
----
