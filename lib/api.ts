@@ -16,12 +16,12 @@ function headers() {
   const jwt = getToken();
   return {
     'Content-Type': 'application/json',
-    'Authorization': `Bearer ${jwt || ANON}`,
-    'apikey': ANON,
+    Authorization: `Bearer ${jwt || ANON}`,
+    apikey: ANON,
   };
 }
 
-// ===== Schema fetching =====
+// === SCHEMA FETCHING ===
 export async function fetchSchema(dbUrl: string, schema = 'public') {
   const r = await fetch(`${BASE}/fetch_schema`, {
     method: 'POST',
@@ -32,7 +32,18 @@ export async function fetchSchema(dbUrl: string, schema = 'public') {
   return r.json();
 }
 
-// ===== SQL generation =====
+// === LOCAL SCHEMA FETCHING ===
+export async function fetchLocalSchema(connectionString: string, schema = 'public') {
+  const r = await fetch(`${BASE}/fetch_local_schema`, {
+    method: 'POST',
+    headers: headers(),
+    body: json({ connectionString, schema }),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// === SQL GENERATION ===
 export async function generateSql(nl: string, schemaJson: any, dialect: string = 'postgres') {
   const r = await fetch(`${BASE}/generate_sql`, {
     method: 'POST',
@@ -43,7 +54,7 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
   return r.json();
 }
 
-// ===== Schemas storage API =====
+// === SCHEMAS CRUD API ===
 const SCHEMAS = `${BASE}/schemas`;
 
 export async function listSchemas() {
