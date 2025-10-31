@@ -5,23 +5,23 @@ const DIALECTS = [
   { value: "mysql", label: "MySQL" },
   { value: "sqlite", label: "SQLite" },
   { value: "mssql", label: "SQL Server" },
-  { value: "oracle", label: "Oracle SQL" },
+  { value: "oracle", label: "Oracle" },
+  { value: "mariadb", label: "MariaDB" },
   { value: "snowflake", label: "Snowflake" },
-  { value: "bigquery", label: "BigQuery" },
-  { value: "redshift", label: "Amazon Redshift" },
+  { value: "redshift", label: "Redshift" },
 ];
 
 export default function SqlDialectSelect({
   value,
   onChange,
 }: {
-  value?: string;
+  value: string;
   onChange: (val: string) => void;
 }) {
   const [selected, setSelected] = useState<string>("");
 
   useEffect(() => {
-    const saved = localStorage.getItem("preferred_dialect");
+    const saved = localStorage.getItem("preferred_sql_dialect");
     if (saved) {
       setSelected(saved);
       onChange(saved);
@@ -31,11 +31,11 @@ export default function SqlDialectSelect({
   const handleChange = (val: string) => {
     setSelected(val);
     onChange(val);
-    localStorage.setItem("preferred_dialect", val);
+    localStorage.setItem("preferred_sql_dialect", val);
   };
 
   return (
-    <div style={{ display: "grid", gap: 6 }}>
+    <div style={{ display: "grid", gap: 8 }}>
       <label
         style={{
           color: "#9ca3af",
@@ -44,7 +44,7 @@ export default function SqlDialectSelect({
           marginLeft: 2,
         }}
       >
-        Выберите SQL-диалект
+        Модель SQL
       </label>
 
       <div style={{ position: "relative" }}>
@@ -56,7 +56,7 @@ export default function SqlDialectSelect({
             color: selected ? "#e5e7eb" : "#6b7280",
             border: "1px solid #1f2937",
             borderRadius: 12,
-            padding: "10px 38px 10px 12px",
+            padding: "10px 40px 10px 12px",
             width: "100%",
             appearance: "none",
             fontWeight: 500,
@@ -66,7 +66,7 @@ export default function SqlDialectSelect({
           }}
         >
           <option value="" disabled>
-            — Выберите диалект SQL —
+            — выберите SQL-диалект —
           </option>
           {DIALECTS.map((d) => (
             <option key={d.value} value={d.value}>
@@ -75,7 +75,6 @@ export default function SqlDialectSelect({
           ))}
         </select>
 
-        {/* Аккуратная стрелка */}
         <span
           style={{
             position: "absolute",
