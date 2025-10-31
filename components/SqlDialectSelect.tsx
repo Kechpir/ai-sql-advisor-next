@@ -57,7 +57,7 @@ export default function SqlDialectSelect({
         ))}
       </select>
 
-      {/* Стрелочка, выровненная идеально */}
+      {/* Стрелочка — теперь ровная и красивая */}
       <span
         style={{
           position: 'absolute',
