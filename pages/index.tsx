@@ -118,7 +118,7 @@ export default function Home() {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Image
-            src="/logo-sql.png"
+            src="/logo.png"
             alt="AI SQL Advisor"
             width={60}
             height={60}
