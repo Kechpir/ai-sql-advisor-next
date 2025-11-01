@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 // import SqlResult from "../components/SqlResult"; // больше не нужен
@@ -36,19 +37,13 @@ export default function Home() {
   const [schemaJson, setSchemaJson] = useState<any | null>(null);
   const [nl, setNl] = useState("");
   const [generatedSql, setGeneratedSql] = useState<string | null>(null);
-
-  // локальный флаг опасности, но ориентируемся на ответ API
   const [danger, setDanger] = useState<boolean>(false);
-
-  // SAVEPOINT-версия из API (только для опасных операций)
   const [savepointSql, setSavepointSql] = useState<string | null>(null);
-
   const [explain, setExplain] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveName, setSaveName] = useState("");
-
-  // auth topbar state + guard
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+
   useEffect(() => {
     try {
       setSignedIn(!!localStorage.getItem("jwt"));
@@ -60,7 +55,6 @@ export default function Home() {
     if (signedIn === false) router.replace("/auth");
   }, [signedIn, router]);
 
-  // toasts
   const [note, setNote] = useState<{ type: "ok" | "warn" | "err"; text: string } | null>(null);
   const toast = (type: "ok" | "warn" | "err", text: string) => {
     setNote({ type, text });
@@ -80,8 +74,6 @@ export default function Home() {
       const sql = String(data.sql || "");
       const finalSql = explain ? annotate(sql) : sql;
       setGeneratedSql(finalSql);
-
-      // SAVEPOINT из API (если опасно) + локальный RE как запасной план
       const apiSavepoint: string | null =
         (data?.withSafety ?? data?.variantSavepoint ?? null) || null;
       setSavepointSql(apiSavepoint);
@@ -107,7 +99,6 @@ export default function Home() {
     }
   };
 
-  // Пока проверяем сессию — показываем скелет
   if (signedIn === null) return <div style={{ padding: 24, color: "#e5e7eb" }}>Загрузка…</div>;
   if (signedIn === false) return null;
 
@@ -150,7 +141,6 @@ export default function Home() {
           )}
         </div>
 
-        {/* Toast */}
         {note && (
           <div
             style={{
@@ -179,6 +169,16 @@ export default function Home() {
         <h1 style={{ margin: 0 }}>🧠 AI SQL Advisor</h1>
         <p style={{ margin: "6px 0 20px", opacity: 0.8 }}>Генерация SQL и управление схемами.</p>
 
+        {/* ✅ Новая кнопка перехода на SQL интерфейс */}
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
+          <Link
+            href="/sql-interface"
+            className="px-6 py-3 bg-blue-600 text-white rounded-xl shadow hover:bg-blue-700 transition"
+          >
+            Перейти в SQL интерфейс
+          </Link>
+        </div>
+
         <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
           <button onClick={() => setTab("scan")} style={tabBtn(tab === "scan")}>
             🔎 Сканировать
@@ -192,7 +192,6 @@ export default function Home() {
           <div style={block}>
             <h3>Подключение и загрузка схемы</h3>
             <DbConnect onLoaded={setSchemaJson} onToast={toast} />
-
             {schemaJson && (
               <>
                 <div style={{ marginTop: 12 }}>
@@ -205,7 +204,6 @@ export default function Home() {
                   <summary>Показать JSON-схему</summary>
                   <pre style={pre}>{JSON.stringify(schemaJson, null, 2)}</pre>
                 </details>
-
                 <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
                   <input
                     placeholder="например: neon_demo"
@@ -230,7 +228,6 @@ export default function Home() {
               rows={5}
               style={input}
             />
-            {/* чекбокс одной строкой */}
             <div
               style={{
                 display: "inline-flex",
@@ -270,7 +267,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Результаты */}
             {generatedSql && (
               <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
                 {danger && (
@@ -284,19 +280,19 @@ export default function Home() {
                       fontWeight: 600,
                     }}
                   >
-                    ВНИМАНИЕ: Запрос может содержать потенциально опасные операции
-                    (DROP/ALTER/TRUNCATE/CREATE/GRANT/REVOKE/DELETE/UPDATE/INSERT/MERGE). Проверьте
-                    условия, права и резервные копии перед выполнением.
+                    ⚠️ Запрос может быть опасен (DROP/ALTER/DELETE и т.д.) — проверь перед
+                    выполнением!
                   </div>
                 )}
 
-                {/* Обычный вариант */}
                 <div style={resultCard}>
                   <div style={resultHdr}>
                     <span>Обычный вариант</span>
                     <button
                       onClick={async () =>
-                        (await copy(plainSql)) ? toast("ok", "Скопировано") : toast("err", "Не удалось скопировать")
+                        (await copy(plainSql))
+                          ? toast("ok", "Скопировано")
+                          : toast("err", "Не удалось скопировать")
                       }
                       style={copyBtn}
                     >
@@ -306,11 +302,10 @@ export default function Home() {
                   <pre style={pre}>{plainSql}</pre>
                 </div>
 
-                {/* Вариант с SAVEPOINT — показываем ТОЛЬКО если пришёл из API */}
                 {savepointSql && (
                   <div style={resultCard}>
                     <div style={resultHdr}>
-                      <span>Вариант с SAVEPOINT (рекомендуется для опасных операций)</span>
+                      <span>Вариант с SAVEPOINT (безопасный)</span>
                       <button
                         onClick={async () =>
                           (await copy(savepointSql))
@@ -348,7 +343,14 @@ const tabBtn = (active: boolean) => ({
   color: "#e5e7eb",
   cursor: "pointer",
 });
-const block = { border: "1px solid #1f2937", borderRadius: 12, padding: 16, background: "#0f172a" };
+
+const block = {
+  border: "1px solid #1f2937",
+  borderRadius: 12,
+  padding: 16,
+  background: "#0f172a",
+};
+
 const input = {
   background: "#0b1220",
   color: "#e5e7eb",
@@ -357,6 +359,7 @@ const input = {
   padding: "10px 12px",
   flex: 1,
 };
+
 const btnMain = {
   background: "linear-gradient(90deg,#22d3ee,#3b82f6)",
   color: "#0b1220",
@@ -366,6 +369,7 @@ const btnMain = {
   padding: "10px 14px",
   cursor: "pointer",
 };
+
 const btnSec = {
   background: "#0b1220",
   color: "#e5e7eb",
@@ -374,6 +378,7 @@ const btnSec = {
   padding: "10px 14px",
   cursor: "pointer",
 };
+
 const badge = {
   background: "#10b98120",
   color: "#065f46",
@@ -382,6 +387,7 @@ const badge = {
   fontSize: 12,
   border: "1px solid #10b98150",
 };
+
 const pre = {
   whiteSpace: "pre-wrap",
   background: "#0b1220",
