@@ -6,9 +6,11 @@ import DbConnect from "../components/DbConnect";
 import SchemasManager from "./components/SchemasManager";
 import { generateSql, saveSchema } from "../lib/api";
 
+/* -------------------- CONSTANTS -------------------- */
 const DANGER_RE =
   /\b(DROP|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|DELETE|UPDATE|INSERT|MERGE)\b/i;
 
+/* -------------------- HELPERS -------------------- */
 function annotate(sql: string) {
   const up = sql.toUpperCase();
   const notes: string[] = [];
@@ -30,19 +32,21 @@ async function copy(text: string) {
   }
 }
 
+/* -------------------- COMPONENT -------------------- */
 export default function Home() {
   const router = useRouter();
   const [tab, setTab] = useState<"scan" | "saved">("scan");
   const [schemaJson, setSchemaJson] = useState<any | null>(null);
   const [nl, setNl] = useState("");
   const [generatedSql, setGeneratedSql] = useState<string | null>(null);
-  const [danger, setDanger] = useState<boolean>(false);
+  const [danger, setDanger] = useState(false);
   const [savepointSql, setSavepointSql] = useState<string | null>(null);
   const [explain, setExplain] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
 
+  /* -------------------- AUTH GUARD -------------------- */
   useEffect(() => {
     try {
       setSignedIn(!!localStorage.getItem("jwt"));
@@ -55,31 +59,30 @@ export default function Home() {
     if (signedIn === false) router.replace("/auth");
   }, [signedIn, router]);
 
+  /* -------------------- TOAST -------------------- */
   const [note, setNote] = useState<{ type: "ok" | "warn" | "err"; text: string } | null>(null);
   const toast = (type: "ok" | "warn" | "err", text: string) => {
     setNote({ type, text });
     setTimeout(() => setNote(null), 2200);
   };
 
+  /* -------------------- ACTIONS -------------------- */
   const onGenerate = async () => {
     if (!schemaJson) return toast("warn", "Сначала загрузите схему");
     if (!nl.trim()) return toast("warn", "Введите задачу");
     setLoading(true);
     try {
       const data = await generateSql(nl.trim(), schemaJson, "postgres");
-      if (data.blocked) {
-        toast("err", "🚫 Запрос заблокирован политикой");
-        return;
-      }
+      if (data.blocked) return toast("err", "🚫 Запрос заблокирован политикой");
+
       const sql = String(data.sql || "");
       const finalSql = explain ? annotate(sql) : sql;
       setGeneratedSql(finalSql);
 
-      const apiSavepoint: string | null =
-        (data?.withSafety ?? data?.variantSavepoint ?? null) || null;
+      const apiSavepoint = data?.withSafety ?? data?.variantSavepoint ?? null;
       setSavepointSql(apiSavepoint);
       setDanger(!!apiSavepoint || DANGER_RE.test(sql));
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
       toast("err", "Ошибка генерации");
     } finally {
@@ -94,7 +97,7 @@ export default function Home() {
       await saveSchema(saveName.trim(), schemaJson);
       toast("ok", `Сохранено: «${saveName.trim()}» ✅`);
       setSaveName("");
-    } catch (e: any) {
+    } catch (e) {
       console.error(e);
       toast("err", "Ошибка сохранения");
     }
@@ -105,6 +108,7 @@ export default function Home() {
 
   const plainSql = generatedSql ?? "";
 
+  /* -------------------- RENDER -------------------- */
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 20px 80px" }}>
       {/* ---- HEADER ---- */}
@@ -120,9 +124,14 @@ export default function Home() {
           <Image
             src="/logo.png"
             alt="AI SQL Advisor"
-            width={60}
-            height={60}
-            style={{ borderRadius: 10 }}
+            width={70}
+            height={70}
+            priority
+            style={{
+              borderRadius: 12,
+              objectFit: "contain",
+              boxShadow: "0 0 12px rgba(59,130,246,0.35)",
+            }}
           />
           <div>
             <h1 style={{ margin: 0, fontSize: 26, color: "#fff", fontWeight: 700 }}>
@@ -133,6 +142,7 @@ export default function Home() {
             </p>
           </div>
         </div>
+
         {signedIn && (
           <button
             onClick={() => {
@@ -153,42 +163,44 @@ export default function Home() {
         )}
       </header>
 
-      {/* ---- MAIN PANEL ---- */}
+      {/* ---- MAIN ---- */}
       <div style={{ marginTop: -10 }}>
-        <div style={{ display: "flex", justifyContent: "center", margin: "20px 0 30px" }}>
+        {/* кнопка перехода */}
+        <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 30px" }}>
           <Link
             href="/sql-interface"
             style={{
               display: "inline-block",
-              padding: "12px 24px",
+              padding: "12px 26px",
               borderRadius: 14,
               textDecoration: "none",
               background: "linear-gradient(90deg,#22d3ee,#3b82f6)",
               color: "#0b1220",
               fontWeight: 700,
               fontSize: 16,
-              boxShadow: "0 0 12px rgba(59,130,246,0.4)",
-              transition: "transform 0.15s ease, box-shadow 0.2s ease",
+              boxShadow: "0 0 14px rgba(59,130,246,0.45)",
+              transition: "transform 0.2s ease, box-shadow 0.25s ease",
             }}
             onMouseOver={(e) => {
-              e.currentTarget.style.transform = "scale(1.04)";
-              e.currentTarget.style.boxShadow = "0 0 18px rgba(59,130,246,0.7)";
+              e.currentTarget.style.transform = "scale(1.05)";
+              e.currentTarget.style.boxShadow = "0 0 20px rgba(59,130,246,0.7)";
             }}
             onMouseOut={(e) => {
               e.currentTarget.style.transform = "scale(1)";
-              e.currentTarget.style.boxShadow = "0 0 12px rgba(59,130,246,0.4)";
+              e.currentTarget.style.boxShadow = "0 0 14px rgba(59,130,246,0.45)";
             }}
           >
             🚀 Перейти в SQL интерфейс
           </Link>
         </div>
 
+        {/* основной блок */}
         <div
           style={{
             border: "1px solid #1f2937",
             borderRadius: 16,
             background: "#0f172a",
-            padding: 24,
+            padding: 26,
           }}
         >
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
@@ -336,9 +348,7 @@ export default function Home() {
           )}
 
           {tab === "saved" && (
-            <div>
-              <SchemasManager schemaJson={schemaJson} setSchemaJson={setSchemaJson} />
-            </div>
+            <SchemasManager schemaJson={schemaJson} setSchemaJson={setSchemaJson} />
           )}
         </div>
       </div>
@@ -372,7 +382,7 @@ export default function Home() {
   );
 }
 
-// ---- styles ----
+/* -------------------- STYLES -------------------- */
 const tabBtn = (active: boolean) => ({
   padding: "10px 14px",
   borderRadius: 12,
