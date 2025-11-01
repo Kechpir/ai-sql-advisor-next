@@ -1,5 +1,6 @@
 import React from "react";
-import SqlInterfacePanel from "@/components/SqlInterfacePanel";
+import SqlInterfacePanel from "../components/SqlInterfacePanel";
+
 
 export default function SqlInterface() {
   return (
