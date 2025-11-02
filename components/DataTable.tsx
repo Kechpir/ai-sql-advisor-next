@@ -1,19 +1,17 @@
 import React, { useState } from "react";
-import "../styles/sql-interface.css";
 
 interface DataTableProps {
   data?: Record<string, any>[];
 }
 
 export default function DataTable({ data = [] }: DataTableProps) {
-  // 🔹 Пример демо-данных (если нет API-результата)
+  // 🔹 Пример демо-данных (если API пока не подключён)
   const demoData: Record<string, any>[] = [
     { id: 1, name: "Иван", email: "ivan@example.com", country: "RU", total: 230 },
     { id: 2, name: "Алия", email: "aliya@example.com", country: "KZ", total: 510 },
     { id: 3, name: "John", email: "john@example.com", country: "US", total: 190 },
   ];
 
-  // Если данных нет, показываем демо
   const rows = Array.isArray(data) && data.length > 0 ? data : demoData;
 
   // 🧠 Состояния
@@ -25,7 +23,7 @@ export default function DataTable({ data = [] }: DataTableProps) {
   // 🧩 Заголовки таблицы
   const headers = Object.keys(tableData[0] || {});
 
-  // ⚙️ Сортировка по клику на заголовок
+  // ⚙️ Сортировка
   const handleSort = (field: string) => {
     if (!field) return;
 
@@ -36,7 +34,6 @@ export default function DataTable({ data = [] }: DataTableProps) {
       const valA = a[field];
       const valB = b[field];
 
-      // Безопасное сравнение
       if (valA == null || valB == null) return 0;
       if (valA < valB) return direction === "ASC" ? -1 : 1;
       if (valA > valB) return direction === "ASC" ? 1 : -1;
@@ -44,11 +41,11 @@ export default function DataTable({ data = [] }: DataTableProps) {
     });
 
     setSortField(field);
-    setSortDirection(direction);
+    setSortDirection(direction as "ASC" | "DESC");
     setTableData(sorted);
   };
 
-  // ✏️ Inline-редактирование ячеек
+  // ✏️ Inline редактирование ячеек
   const handleEdit = (rowIndex: number, field: string, value: string) => {
     const updated = [...tableData];
     if (!updated[rowIndex]) return;
@@ -56,7 +53,7 @@ export default function DataTable({ data = [] }: DataTableProps) {
     setTableData(updated);
   };
 
-  // 🔍 Фильтрация по строкам
+  // 🔍 Фильтрация
   const filteredData = tableData.filter((row) =>
     Object.values(row)
       .join(" ")
