@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import "../styles/sql-interface.css";
 
 export default function SqlBuilderPanel({ onRunQuery }: { onRunQuery?: (query: any) => void }) {
   // 📦 Mock данные — позже заменим на реальные из схемы
