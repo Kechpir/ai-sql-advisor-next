@@ -6,30 +6,40 @@ interface DataTableProps {
 }
 
 export default function DataTable({ data = [] }: DataTableProps) {
-  // Если данных нет — пример для демо
-  const demoData = [
+  // 🔹 Пример демо-данных (если нет API-результата)
+  const demoData: Record<string, any>[] = [
     { id: 1, name: "Иван", email: "ivan@example.com", country: "RU", total: 230 },
     { id: 2, name: "Алия", email: "aliya@example.com", country: "KZ", total: 510 },
     { id: 3, name: "John", email: "john@example.com", country: "US", total: 190 },
   ];
 
-  const rows = data.length > 0 ? data : demoData;
+  // Если данных нет, показываем демо
+  const rows = Array.isArray(data) && data.length > 0 ? data : demoData;
 
-  const [tableData, setTableData] = useState(rows);
+  // 🧠 Состояния
+  const [tableData, setTableData] = useState<Record<string, any>[]>(rows);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<"ASC" | "DESC">("ASC");
   const [filter, setFilter] = useState<string>("");
 
+  // 🧩 Заголовки таблицы
   const headers = Object.keys(tableData[0] || {});
 
-  // Сортировка
+  // ⚙️ Сортировка по клику на заголовок
   const handleSort = (field: string) => {
-    let direction = sortDirection === "ASC" ? "DESC" : "ASC";
+    if (!field) return;
+
+    let direction: "ASC" | "DESC" = sortDirection === "ASC" ? "DESC" : "ASC";
     if (sortField !== field) direction = "ASC";
 
     const sorted = [...tableData].sort((a, b) => {
-      if (a[field] < b[field]) return direction === "ASC" ? -1 : 1;
-      if (a[field] > b[field]) return direction === "ASC" ? 1 : -1;
+      const valA = a[field];
+      const valB = b[field];
+
+      // Безопасное сравнение
+      if (valA == null || valB == null) return 0;
+      if (valA < valB) return direction === "ASC" ? -1 : 1;
+      if (valA > valB) return direction === "ASC" ? 1 : -1;
       return 0;
     });
 
@@ -38,14 +48,15 @@ export default function DataTable({ data = [] }: DataTableProps) {
     setTableData(sorted);
   };
 
-  // Inline редактирование
+  // ✏️ Inline-редактирование ячеек
   const handleEdit = (rowIndex: number, field: string, value: string) => {
     const updated = [...tableData];
+    if (!updated[rowIndex]) return;
     updated[rowIndex][field] = value;
     setTableData(updated);
   };
 
-  // Фильтрация
+  // 🔍 Фильтрация по строкам
   const filteredData = tableData.filter((row) =>
     Object.values(row)
       .join(" ")
@@ -55,6 +66,7 @@ export default function DataTable({ data = [] }: DataTableProps) {
 
   return (
     <div className="data-table-container">
+      {/* Верхняя панель таблицы */}
       <div className="table-toolbar">
         <h2 className="panel-title">📊 Результаты запроса</h2>
         <input
@@ -66,6 +78,7 @@ export default function DataTable({ data = [] }: DataTableProps) {
         />
       </div>
 
+      {/* Таблица */}
       <div className="data-table-wrapper">
         <table className="data-table">
           <thead>
@@ -83,19 +96,27 @@ export default function DataTable({ data = [] }: DataTableProps) {
             </tr>
           </thead>
           <tbody>
-            {filteredData.map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                {headers.map((field) => (
-                  <td key={field}>
-                    <input
-                      type="text"
-                      value={row[field]}
-                      onChange={(e) => handleEdit(rowIndex, field, e.target.value)}
-                    />
-                  </td>
-                ))}
+            {filteredData.length > 0 ? (
+              filteredData.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {headers.map((field) => (
+                    <td key={field}>
+                      <input
+                        type="text"
+                        value={row[field] ?? ""}
+                        onChange={(e) => handleEdit(rowIndex, field, e.target.value)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={headers.length} style={{ textAlign: "center", opacity: 0.6 }}>
+                  Нет данных для отображения
+                </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
