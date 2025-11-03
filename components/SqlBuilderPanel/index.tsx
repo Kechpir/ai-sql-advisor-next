@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { jsonToSql } from "../../utils/jsonToSql";
 
-export default function SqlBuilderPanel() {
+interface SqlBuilderPanelProps {
+  onExecute?: (query: any) => void;
+}
+
+export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
+
   const [databases, setDatabases] = useState<{ connection: string; dbType: string }[]>([]);
   const [selectedDb, setSelectedDb] = useState<string>("default");
   const [connectionString, setConnectionString] = useState<string>("");
