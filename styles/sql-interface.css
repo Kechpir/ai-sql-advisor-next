@@ -1,95 +1,59 @@
-.sql-builder-panel.compact {
-  zoom: 0.9;
-  max-width: 95%;
+.sql-builder-panel.improved {
+  max-width: 96%;
   margin: auto;
-  padding: 10px;
+  zoom: 0.9;
 }
 
-.compact-grid {
+.builder-grid.two-columns {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
+  gap: 20px;
+  align-items: start;
 }
 
-.input-group.small,
-.filters-section.small,
-.order-section.small {
-  margin-bottom: 10px;
-}
-
-.compact-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-input,
-select {
-  font-size: 0.9rem;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: #0b111b;
-  border: 1px solid rgba(0, 255, 255, 0.1);
-  color: #ccefff;
-  width: 100%;
-  transition: all 0.25s;
-}
-
-input:focus,
-select:focus {
-  outline: none;
-  border-color: #00ffff;
-  box-shadow: 0 0 6px rgba(0, 255, 255, 0.4);
-}
-
-.add-btn.small {
-  padding: 5px 10px;
-  font-size: 0.8rem;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #00cfff, #00ffff);
-  border: none;
-  color: #001219;
-  cursor: pointer;
-  box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
-  transition: all 0.25s;
-}
-
-.add-btn.small:hover {
-  background: linear-gradient(90deg, #00ffff, #00cfff);
-  transform: translateY(-2px);
-}
-
-.input-group.checkbox.small {
-  display: flex;
-  align-items: center;
+.db-add-block {
+  padding: 10px;
   background: rgba(0, 255, 255, 0.05);
-  padding: 8px 10px;
-  border-radius: 8px;
-  margin-top: 10px;
-  box-shadow: 0 0 10px rgba(0, 255, 255, 0.05);
+  border-radius: 10px;
+  margin-bottom: 12px;
 }
 
-.input-group.checkbox.small input[type="checkbox"] {
-  margin-right: 8px;
+.save-db {
+  margin-top: 6px;
+  width: 100%;
 }
 
-.action-group.small {
-  margin-top: 15px;
-  text-align: center;
-}
-
-.action-group.small button {
+.add-btn {
+  display: inline-block;
+  padding: 6px 12px;
   background: linear-gradient(90deg, #00cfff, #00ffff);
-  color: #001219;
   border: none;
-  border-radius: 8px;
-  padding: 10px 18px;
+  color: #001219;
   font-weight: 600;
+  border-radius: 8px;
+  margin-top: 6px;
   cursor: pointer;
-  box-shadow: 0 0 12px rgba(0, 255, 255, 0.3);
+  transition: 0.25s;
 }
 
-.action-group.small button:hover {
+.add-btn:hover {
+  transform: translateY(-2px);
   background: linear-gradient(90deg, #00ffff, #00cfff);
-  transform: translateY(-1px);
+}
+
+.transaction-box {
+  margin-top: 20px;
+  padding: 10px 14px;
+  background: rgba(0, 255, 255, 0.07);
+  border: 1px solid rgba(0, 255, 255, 0.2);
+  border-radius: 10px;
+  text-align: left;
+}
+
+.transaction-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #bdeeff;
+  font-size: 0.95rem;
 }

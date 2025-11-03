@@ -1,24 +1,39 @@
 import React, { useState, useEffect } from "react";
 import { jsonToSql } from "../../utils/jsonToSql";
+import "../../styles/sql-interface.css";
 
-interface SqlBuilderPanelProps {
-  onExecute?: (query: any) => void;
+interface SqlJoin {
+  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
+  table: string;
+  on: string;
 }
 
-export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
-  const [databases, setDatabases] = useState<{ connection: string; dbType: string }[]>([]);
-  const [selectedDb, setSelectedDb] = useState<string>("default");
+interface SqlFilter {
+  field: string;
+  op: string;
+  value: string;
+}
+
+interface SqlOrder {
+  field: string;
+  direction: "ASC" | "DESC";
+}
+
+export default function SqlBuilderPanel() {
+  const [databases, setDatabases] = useState<{ name: string; connection: string; dbType: string }[]>([]);
+  const [dbName, setDbName] = useState<string>("");
   const [connectionString, setConnectionString] = useState<string>("");
   const [dbType, setDbType] = useState<string>("postgres");
+  const [selectedDb, setSelectedDb] = useState<string>("default");
+
   const [queryType, setQueryType] = useState<string>("SELECT");
-  const [table, setTable] = useState("users");
+  const [table, setTable] = useState<string>("users");
   const [fields, setFields] = useState<string[]>(["id", "name", "email"]);
-  const [filters, setFilters] = useState<{ field: string; op: string; value: string }[]>([]);
-  const [orderBy, setOrderBy] = useState<{ field: string; direction: "ASC" | "DESC" }[]>([]);
-  const [joins, setJoins] = useState<{ type: "INNER" | "LEFT" | "RIGHT" | "FULL"; table: string; on: string }[]>([]);
-  const [aggregateFunctions, setAggregateFunctions] = useState<Record<string, string>>({});
-  const [transaction, setTransaction] = useState(false);
-  const [generatedSQL, setGeneratedSQL] = useState("");
+  const [joins, setJoins] = useState<SqlJoin[]>([]);
+  const [filters, setFilters] = useState<SqlFilter[]>([]);
+  const [orderBy, setOrderBy] = useState<SqlOrder[]>([]);
+  const [transaction, setTransaction] = useState<boolean>(false);
+  const [generatedSQL, setGeneratedSQL] = useState<string>("");
 
   useEffect(() => {
     const saved = localStorage.getItem("savedDatabases");
@@ -26,63 +41,55 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
   }, []);
 
   const handleAddDatabase = () => {
-    if (!connectionString.trim()) return alert("Введите строку подключения!");
-    const updated = [...databases, { connection: connectionString.trim(), dbType }];
+    if (!dbName || !connectionString.trim()) return alert("Введите имя и строку подключения!");
+    const updated = [...databases, { name: dbName, connection: connectionString, dbType }];
     setDatabases(updated);
     localStorage.setItem("savedDatabases", JSON.stringify(updated));
+    setDbName("");
     setConnectionString("");
-    setSelectedDb(connectionString.trim());
   };
 
   const handleGenerateSQL = () => {
-    try {
-      const processedFields = fields.map((f) => {
-        const func = aggregateFunctions[f];
-        return func ? `${func}(${f})` : f;
-      });
-
-      const jsonQuery = {
-        database: selectedDb,
-        dbType,
-        queryType,
-        table,
-        fields: processedFields,
-        filters,
-        orderBy,
-        joins,
-        transaction,
-      };
-
-      const sql = jsonToSql(jsonQuery);
-      setGeneratedSQL(sql);
-      if (onExecute) onExecute(jsonQuery);
-    } catch (err) {
-      setGeneratedSQL(`Ошибка: ${(err as Error).message}`);
-    }
+    const jsonQuery = { table, fields, joins, filters, orderBy, transaction };
+    const sql = jsonToSql(jsonQuery as any);
+    setGeneratedSQL(sql);
   };
 
   return (
-    <div className="sql-builder-panel compact">
+    <div className="sql-builder-panel improved">
       <h2 className="panel-title">🧠 Визуальный SQL Конструктор</h2>
 
-      <div className="builder-grid compact-grid">
+      <div className="builder-grid two-columns">
+        {/* ===================== */}
         {/* ЛЕВАЯ КОЛОНКА */}
+        {/* ===================== */}
         <div className="builder-left">
+          {/* Подключение к базе */}
           <div className="input-group small">
             <label>База данных:</label>
             <select value={selectedDb} onChange={(e) => setSelectedDb(e.target.value)}>
               <option value="default">Текущая (по умолчанию)</option>
               {databases.map((db, i) => (
                 <option key={i} value={db.connection}>
-                  {db.connection.length > 45 ? db.connection.slice(0, 45) + "..." : db.connection}
+                  {db.name} ({db.dbType})
                 </option>
               ))}
-              <option value="new">➕ Новая</option>
+              <option value="new">➕ Добавить новую</option>
             </select>
           </div>
 
           {selectedDb === "new" && (
-            <>
+            <div className="db-add-block">
+              <div className="input-group small">
+                <label>Имя подключения:</label>
+                <input
+                  type="text"
+                  value={dbName}
+                  onChange={(e) => setDbName(e.target.value)}
+                  placeholder="Например: TestDB"
+                />
+              </div>
+
               <div className="input-group small">
                 <label>Connection String:</label>
                 <input
@@ -92,6 +99,7 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
                   placeholder="postgresql://user:pass@host/db"
                 />
               </div>
+
               <div className="input-group small">
                 <label>SQL модель:</label>
                 <select value={dbType} onChange={(e) => setDbType(e.target.value)}>
@@ -102,10 +110,14 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
                   <option value="oracle">Oracle</option>
                 </select>
               </div>
-              <button className="add-btn">✅ Сохранить</button>
-            </>
+
+              <button className="add-btn save-db" onClick={handleAddDatabase}>
+                💾 Сохранить подключение
+              </button>
+            </div>
           )}
 
+          {/* Тип запроса */}
           <div className="input-group small">
             <label>Тип SQL-запроса:</label>
             <select value={queryType} onChange={(e) => setQueryType(e.target.value)}>
@@ -113,48 +125,39 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
               <option value="INSERT">INSERT</option>
               <option value="UPDATE">UPDATE</option>
               <option value="DELETE">DELETE</option>
-              <option value="ALTER">ALTER</option>
-              <option value="CREATE">CREATE</option>
-              <option value="DROP">DROP</option>
             </select>
           </div>
 
+          {/* Таблица */}
           <div className="input-group small">
             <label>Таблица:</label>
-            <input value={table} onChange={(e) => setTable(e.target.value)} />
+            <input
+              type="text"
+              value={table}
+              onChange={(e) => setTable(e.target.value)}
+              placeholder="users"
+            />
           </div>
 
+          {/* Поля */}
           <div className="input-group small">
-            <label>Поля / Aggregate:</label>
+            <label>Поля:</label>
             {fields.map((field, i) => (
-              <div key={i} className="field-agg-row compact-row">
-                <input
-                  type="text"
-                  value={field}
-                  onChange={(e) => {
-                    const updated = [...fields];
-                    updated[i] = e.target.value;
-                    setFields(updated);
-                  }}
-                />
-                <select
-                  value={aggregateFunctions[field] || ""}
-                  onChange={(e) =>
-                    setAggregateFunctions({ ...aggregateFunctions, [field]: e.target.value })
-                  }
-                >
-                  <option value="">—</option>
-                  <option value="SUM">SUM</option>
-                  <option value="AVG">AVG</option>
-                  <option value="COUNT">COUNT</option>
-                  <option value="MIN">MIN</option>
-                  <option value="MAX">MAX</option>
-                </select>
-              </div>
+              <input
+                key={i}
+                type="text"
+                value={field}
+                onChange={(e) => {
+                  const updated = [...fields];
+                  updated[i] = e.target.value;
+                  setFields(updated);
+                }}
+              />
             ))}
-            <button className="add-btn small">➕ Поле</button>
+            <button className="add-btn" onClick={() => setFields([...fields, ""])}>➕ Добавить поле</button>
           </div>
 
+          {/* JOIN */}
           <div className="input-group small">
             <label>JOIN:</label>
             {joins.map((j, i) => (
@@ -163,17 +166,18 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
                   value={j.type}
                   onChange={(e) => {
                     const updated = [...joins];
-                    updated[i].type = e.target.value as any;
+                    updated[i].type = e.target.value as "INNER" | "LEFT" | "RIGHT" | "FULL";
                     setJoins(updated);
                   }}
                 >
                   <option value="INNER">INNER</option>
                   <option value="LEFT">LEFT</option>
                   <option value="RIGHT">RIGHT</option>
+                  <option value="FULL">FULL</option>
                 </select>
                 <input
                   type="text"
-                  placeholder="таблица"
+                  placeholder="Таблица"
                   value={j.table}
                   onChange={(e) => {
                     const updated = [...joins];
@@ -181,17 +185,33 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
                     setJoins(updated);
                   }}
                 />
+                <input
+                  type="text"
+                  placeholder="ON (пример: users.id = orders.user_id)"
+                  value={j.on}
+                  onChange={(e) => {
+                    const updated = [...joins];
+                    updated[i].on = e.target.value;
+                    setJoins(updated);
+                  }}
+                />
               </div>
             ))}
-            <button className="add-btn small" onClick={() => setJoins([...joins, { type: "INNER", table: "", on: "" }])}>
-              ➕ JOIN
+            <button
+              className="add-btn"
+              onClick={() => setJoins([...joins, { type: "INNER", table: "", on: "" }])}
+            >
+              ➕ Добавить JOIN
             </button>
           </div>
         </div>
 
+        {/* ===================== */}
         {/* ПРАВАЯ КОЛОНКА */}
+        {/* ===================== */}
         <div className="builder-right">
-          <div className="filters-section small">
+          {/* WHERE */}
+          <div className="input-group small">
             <label>WHERE:</label>
             {filters.map((f, i) => (
               <div key={i} className="filter-row compact-row">
@@ -231,12 +251,13 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
                 />
               </div>
             ))}
-            <button className="add-btn small" onClick={() => setFilters([...filters, { field: "", op: "=", value: "" }])}>
-              ➕ Фильтр
+            <button className="add-btn" onClick={() => setFilters([...filters, { field: "", op: "=", value: "" }])}>
+              ➕ Добавить фильтр
             </button>
           </div>
 
-          <div className="order-section small">
+          {/* ORDER BY */}
+          <div className="input-group small">
             <label>ORDER BY:</label>
             {orderBy.map((o, i) => (
               <div key={i} className="order-row compact-row">
@@ -254,7 +275,7 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
                   value={o.direction}
                   onChange={(e) => {
                     const updated = [...orderBy];
-                    updated[i].direction = e.target.value as any;
+                    updated[i].direction = e.target.value as "ASC" | "DESC";
                     setOrderBy(updated);
                   }}
                 >
@@ -263,13 +284,14 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
                 </select>
               </div>
             ))}
-            <button className="add-btn small" onClick={() => setOrderBy([...orderBy, { field: "", direction: "ASC" }])}>
-              ➕ ORDER
+            <button className="add-btn" onClick={() => setOrderBy([...orderBy, { field: "", direction: "ASC" }])}>
+              ➕ Добавить ORDER
             </button>
           </div>
 
-          <div className="input-group checkbox small">
-            <label>
+          {/* Транзакция */}
+          <div className="transaction-box">
+            <label className="transaction-label">
               <input
                 type="checkbox"
                 checked={transaction}
@@ -281,7 +303,7 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
         </div>
       </div>
 
-      <div className="action-group small">
+      <div className="action-group">
         <button onClick={handleGenerateSQL}>⚡ Сгенерировать SQL</button>
       </div>
 
