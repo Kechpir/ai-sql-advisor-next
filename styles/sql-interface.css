@@ -1,106 +1,95 @@
-.builder-grid {
+.sql-builder-panel.compact {
+  zoom: 0.9;
+  max-width: 95%;
+  margin: auto;
+  padding: 10px;
+}
+
+.compact-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 24px;
-  width: 100%;
-  margin-top: 10px;
+  gap: 16px;
 }
 
-.builder-left,
-.builder-right {
-  background: rgba(255, 255, 255, 0.02);
-  border-radius: 12px;
-  padding: 18px;
-  box-shadow: 0 0 18px rgba(0, 255, 255, 0.05);
+.input-group.small,
+.filters-section.small,
+.order-section.small {
+  margin-bottom: 10px;
 }
 
-.add-btn {
-  margin-top: 10px;
-  background: linear-gradient(90deg, #00b7ff, #00ffff);
-  color: #001219;
-  border: none;
-  border-radius: 8px;
-  padding: 8px 14px;
-  font-weight: 600;
+.compact-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+input,
+select {
   font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #0b111b;
+  border: 1px solid rgba(0, 255, 255, 0.1);
+  color: #ccefff;
+  width: 100%;
+  transition: all 0.25s;
 }
 
-.add-btn:hover {
-  background: linear-gradient(90deg, #00ffff, #00b7ff);
-  box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #00ffff;
+  box-shadow: 0 0 6px rgba(0, 255, 255, 0.4);
+}
+
+.add-btn.small {
+  padding: 5px 10px;
+  font-size: 0.8rem;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #00cfff, #00ffff);
+  border: none;
+  color: #001219;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+  transition: all 0.25s;
+}
+
+.add-btn.small:hover {
+  background: linear-gradient(90deg, #00ffff, #00cfff);
   transform: translateY(-2px);
 }
 
-/* Чекбокс — неоновая версия */
-.input-group.checkbox {
+.input-group.checkbox.small {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  margin-bottom: 16px;
-  background: rgba(0, 255, 255, 0.03);
-  border: 1px solid rgba(0, 255, 255, 0.08);
-  border-radius: 10px;
-  padding: 10px 14px;
-  width: fit-content;
-  min-width: 280px;
-  box-shadow: 0 0 12px rgba(0, 255, 255, 0.05);
-  transition: all 0.3s ease;
-  cursor: pointer;
+  background: rgba(0, 255, 255, 0.05);
+  padding: 8px 10px;
+  border-radius: 8px;
+  margin-top: 10px;
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.05);
 }
 
-.input-group.checkbox:hover {
-  background: rgba(0, 255, 255, 0.06);
-  box-shadow: 0 0 18px rgba(0, 255, 255, 0.1);
+.input-group.checkbox.small input[type="checkbox"] {
+  margin-right: 8px;
+}
+
+.action-group.small {
+  margin-top: 15px;
+  text-align: center;
+}
+
+.action-group.small button {
+  background: linear-gradient(90deg, #00cfff, #00ffff);
+  color: #001219;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.3);
+}
+
+.action-group.small button:hover {
+  background: linear-gradient(90deg, #00ffff, #00cfff);
   transform: translateY(-1px);
-}
-
-.input-group.checkbox input[type="checkbox"] {
-  appearance: none;
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  border: 2px solid #00d8ff;
-  background: #0c0e13;
-  cursor: pointer;
-  position: relative;
-  transition: all 0.25s ease-in-out;
-  box-shadow: 0 0 4px rgba(0, 255, 255, 0.2);
-}
-
-.input-group.checkbox input[type="checkbox"]:checked {
-  background: linear-gradient(145deg, #00f6ff, #00b7ff);
-  box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
-  border-color: #00ffff;
-}
-
-.input-group.checkbox input[type="checkbox"]::after {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 6px;
-  width: 5px;
-  height: 10px;
-  border-right: 2px solid #0b0f13;
-  border-bottom: 2px solid #0b0f13;
-  transform: rotate(45deg) scale(0);
-  opacity: 0;
-  transition: all 0.25s ease;
-}
-
-.input-group.checkbox input[type="checkbox"]:checked::after {
-  opacity: 1;
-  transform: rotate(45deg) scale(1);
-}
-
-.input-group.checkbox label {
-  color: #bfefff;
-  font-size: 0.95rem;
-  font-weight: 500;
-  user-select: none;
-  text-shadow: 0 0 6px rgba(0, 255, 255, 0.15);
-  letter-spacing: 0.2px;
 }
