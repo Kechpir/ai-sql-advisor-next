@@ -1,228 +1,96 @@
-/* ======================================= */
-/* 🧠 SQL Interface — Neural Glow Enhanced */
-/* ======================================= */
+/* =============================== */
+/* 🧮 Transaction Checkbox — Final */
+/* =============================== */
 
-.sql-builder-panel {
-  background: radial-gradient(circle at 30% 20%, #0d1117 0%, #080a0e 100%);
-  color: #f1f5f9;
-  border-radius: 18px;
-  padding: 28px 36px;
-  max-width: 1100px;
-  margin: 40px auto;
-  border: 1px solid rgba(0, 255, 255, 0.08);
-  box-shadow: 0 0 24px rgba(0, 255, 255, 0.05);
-  transition: all 0.35s ease-in-out;
-  backdrop-filter: blur(8px);
-}
-
-.sql-builder-panel:hover {
-  box-shadow: 0 0 48px rgba(0, 255, 255, 0.1);
-  transform: translateY(-1px);
-}
-
-.panel-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  text-align: center;
-  margin-bottom: 28px;
-  color: #00e0ff;
-  text-shadow: 0 0 14px rgba(0, 200, 255, 0.5);
-  letter-spacing: 0.5px;
-  animation: pulseTitle 4s ease-in-out infinite;
-}
-
-@keyframes pulseTitle {
-  0%, 100% { text-shadow: 0 0 14px rgba(0, 255, 255, 0.4); }
-  50% { text-shadow: 0 0 24px rgba(0, 255, 255, 0.8); }
-}
-
-/* Header Buttons */
-.sql-header {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-bottom: 20px;
-}
-
-.sql-header button {
-  background: rgba(15, 20, 25, 0.9);
-  border: 1px solid rgba(0, 255, 255, 0.15);
-  color: #e2e8f0;
-  border-radius: 8px;
-  padding: 8px 16px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: all 0.25s ease;
-}
-
-.sql-header button:hover {
-  background: rgba(0, 255, 255, 0.1);
-  box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
-  color: #00ffff;
-}
-
-/* Inputs and Selects */
-.input-group {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 18px;
-}
-
-.input-group label {
-  font-weight: 500;
-  font-size: 0.9rem;
-  margin-bottom: 6px;
-  color: #cbd5e1;
-}
-
-.input-group input,
-.input-group select {
-  background: #12151c;
-  color: #e2e8f0;
-  border: 1px solid rgba(0, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 0.9rem;
-  transition: 0.25s ease;
-}
-
-.input-group input:focus,
-.input-group select:focus {
-  border-color: #00ffff;
-  box-shadow: 0 0 12px rgba(0, 255, 255, 0.3);
-  transform: scale(1.02);
-}
-
-/* Fields + Aggregation */
-.field-agg-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
-  animation: fadeIn 0.5s ease;
-}
-
-.btn-add-field,
-.btn-add-join,
-.btn-add-filter,
-.btn-add-order {
-  background: rgba(0, 255, 255, 0.07);
-  border: 1px solid rgba(0, 255, 255, 0.2);
-  color: #00ffff;
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 0.85rem;
-  cursor: pointer;
-  margin-top: 6px;
-  transition: 0.25s ease;
-}
-
-.btn-add-field:hover,
-.btn-add-join:hover,
-.btn-add-filter:hover,
-.btn-add-order:hover {
-  background: rgba(0, 255, 255, 0.2);
-  box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
-}
-
-/* Join / Filter / Group Sections */
-.join-section,
-.filters-section,
-.group-order-section {
-  margin-top: 20px;
-  padding: 18px;
-  border: 1px solid rgba(0, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  transition: 0.25s ease;
-}
-
-.join-section:hover,
-.filters-section:hover,
-.group-order-section:hover {
-  background: rgba(0, 255, 255, 0.05);
-  box-shadow: 0 0 16px rgba(0, 255, 255, 0.1);
-}
-
-.join-row,
-.filter-row,
-.order-row {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-/* Transaction Checkbox */
 .input-group.checkbox {
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.input-group.checkbox input {
-  width: 18px;
-  height: 18px;
-  accent-color: #00ffff;
-}
-
-/* Execute Button */
-.action-group {
-  text-align: center;
-  margin-top: 28px;
-}
-
-.action-group button {
-  background: linear-gradient(90deg, #00ffff88, #00c8ffbb);
-  color: #0e0e12;
-  border: none;
-  border-radius: 12px;
-  padding: 12px 28px;
-  font-weight: 600;
-  letter-spacing: 0.6px;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  box-shadow: 0 0 16px rgba(0, 255, 255, 0.25);
-}
-
-.action-group button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 0 26px rgba(0, 255, 255, 0.45);
-}
-
-/* SQL Output */
-.sql-output {
-  margin-top: 34px;
-  background: #0a0c10;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  margin-bottom: 16px;
+  background: rgba(0, 255, 255, 0.03);
   border: 1px solid rgba(0, 255, 255, 0.08);
   border-radius: 10px;
-  padding: 18px;
-  animation: fadeIn 0.8s ease-in-out;
+  padding: 10px 14px;
+  width: fit-content;
+  min-width: 280px;
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.05);
+  transition: all 0.3s ease;
+  cursor: pointer;
 }
 
-.sql-output h3 {
-  color: #00e0ff;
-  font-size: 1rem;
-  margin-bottom: 10px;
+.input-group.checkbox:hover {
+  background: rgba(0, 255, 255, 0.06);
+  box-shadow: 0 0 18px rgba(0, 255, 255, 0.1);
+  transform: translateY(-1px);
 }
 
-.sql-output pre {
-  background: transparent;
-  color: #00ffff;
-  font-family: "Fira Code", monospace;
-  font-size: 0.9rem;
-  line-height: 1.4rem;
-  white-space: pre-wrap;
-  word-break: break-word;
-  animation: glowText 3s infinite alternate;
+/* 🟩 Сам чекбокс */
+.input-group.checkbox input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 2px solid #00d8ff;
+  background: #0c0e13;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.25s ease-in-out;
+  box-shadow: 0 0 4px rgba(0, 255, 255, 0.2);
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+.input-group.checkbox input[type="checkbox"]:hover {
+  box-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
 }
 
-@keyframes glowText {
-  from { text-shadow: 0 0 4px #00ffff55, 0 0 12px #00ffff22; }
-  to { text-shadow: 0 0 10px #00ffff99, 0 0 24px #00ffff44; }
+/* ✅ Анимация при нажатии */
+.input-group.checkbox input[type="checkbox"]:checked {
+  background: linear-gradient(145deg, #00f6ff, #00b7ff);
+  box-shadow: 0 0 12px rgba(0, 255, 255, 0.5);
+  border-color: #00ffff;
+  animation: glowPulse 0.6s ease-out;
+}
+
+@keyframes glowPulse {
+  0% {
+    box-shadow: 0 0 0px rgba(0, 255, 255, 0.6);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(0, 255, 255, 0.8);
+  }
+  100% {
+    box-shadow: 0 0 8px rgba(0, 255, 255, 0.3);
+  }
+}
+
+/* ✳️ Галочка */
+.input-group.checkbox input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 6px;
+  width: 5px;
+  height: 10px;
+  border-right: 2px solid #0b0f13;
+  border-bottom: 2px solid #0b0f13;
+  transform: rotate(45deg) scale(0);
+  opacity: 0;
+  transition: all 0.25s ease;
+}
+
+.input-group.checkbox input[type="checkbox"]:checked::after {
+  opacity: 1;
+  transform: rotate(45deg) scale(1);
+}
+
+/* 🏷 Подпись */
+.input-group.checkbox label {
+  color: #bfefff;
+  font-size: 0.95rem;
+  font-weight: 500;
+  user-select: none;
+  text-shadow: 0 0 6px rgba(0, 255, 255, 0.15);
+  letter-spacing: 0.2px;
 }
