@@ -1,59 +1,92 @@
-.sql-builder-panel.improved {
-  max-width: 96%;
-  margin: auto;
-  zoom: 0.9;
+/* Безопасные стили для SQL Builder */
+.sql-builder-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  color: #e5e5e5;
+  font-family: "Inter", sans-serif;
 }
 
-.builder-grid.two-columns {
+.panel-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  text-align: center;
+}
+
+.builder-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 20px;
   align-items: start;
 }
 
-.db-add-block {
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #141414;
   padding: 10px;
-  background: rgba(0, 255, 255, 0.05);
-  border-radius: 10px;
-  margin-bottom: 12px;
+  border-radius: 8px;
 }
 
-.save-db {
-  margin-top: 6px;
-  width: 100%;
+.input-group label {
+  font-weight: 500;
+  color: #bdbdbd;
+}
+
+.input-group input,
+.input-group select {
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #2c2c2c;
+  background: #1e1e1e;
+  color: white;
 }
 
 .add-btn {
   display: inline-block;
-  padding: 6px 12px;
-  background: linear-gradient(90deg, #00cfff, #00ffff);
-  border: none;
-  color: #001219;
-  font-weight: 600;
-  border-radius: 8px;
   margin-top: 6px;
+  background: linear-gradient(90deg, #00b4d8, #0077b6);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
   cursor: pointer;
-  transition: 0.25s;
+  font-size: 0.9rem;
+  transition: opacity 0.2s ease;
 }
 
 .add-btn:hover {
-  transform: translateY(-2px);
-  background: linear-gradient(90deg, #00ffff, #00cfff);
+  opacity: 0.85;
 }
 
 .transaction-box {
-  margin-top: 20px;
-  padding: 10px 14px;
-  background: rgba(0, 255, 255, 0.07);
-  border: 1px solid rgba(0, 255, 255, 0.2);
-  border-radius: 10px;
-  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-top: 15px;
+  padding: 10px;
+  background: #101010;
+  border-radius: 8px;
 }
 
 .transaction-label {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: #bdeeff;
-  font-size: 0.95rem;
+  color: #ccc;
+  font-size: 0.9rem;
+}
+
+.sql-output {
+  background: #0f0f0f;
+  padding: 15px;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: monospace;
+  white-space: pre-wrap;
+  color: #00d8ff;
+  margin-top: 15px;
 }
