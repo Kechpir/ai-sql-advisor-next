@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { jsonToSql } from "../../utils/jsonToSql";
-import "../../styles/sql-interface.css";
+
 
 interface SqlJoin {
   type: "INNER" | "LEFT" | "RIGHT" | "FULL";
