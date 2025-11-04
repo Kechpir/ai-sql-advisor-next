@@ -19,7 +19,11 @@ interface SqlOrder {
   direction: "ASC" | "DESC";
 }
 
-export default function SqlBuilderPanel() {
+interface SqlBuilderPanelProps {
+  onExecute?: (query: any) => Promise<void> | void;
+}
+
+export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
   const [databases, setDatabases] = useState<{ name: string; connection: string; dbType: string }[]>([]);
   const [dbName, setDbName] = useState<string>("");
   const [connectionString, setConnectionString] = useState<string>("");
@@ -49,10 +53,14 @@ export default function SqlBuilderPanel() {
     setConnectionString("");
   };
 
-  const handleGenerateSQL = () => {
+  const handleGenerateSQL = async () => {
     const jsonQuery = { table, fields, joins, filters, orderBy, transaction };
     const sql = jsonToSql(jsonQuery as any);
     setGeneratedSQL(sql);
+
+    if (onExecute) {
+      await onExecute(jsonQuery);
+    }
   };
 
   return (
@@ -60,11 +68,8 @@ export default function SqlBuilderPanel() {
       <h2 className="panel-title">🧠 Визуальный SQL Конструктор</h2>
 
       <div className="builder-grid two-columns">
-        {/* ===================== */}
-        {/* ЛЕВАЯ КОЛОНКА */}
-        {/* ===================== */}
+        {/* Левая колонка */}
         <div className="builder-left">
-          {/* Подключение к базе */}
           <div className="input-group small">
             <label>База данных:</label>
             <select value={selectedDb} onChange={(e) => setSelectedDb(e.target.value)}>
@@ -117,7 +122,6 @@ export default function SqlBuilderPanel() {
             </div>
           )}
 
-          {/* Тип запроса */}
           <div className="input-group small">
             <label>Тип SQL-запроса:</label>
             <select value={queryType} onChange={(e) => setQueryType(e.target.value)}>
@@ -128,7 +132,6 @@ export default function SqlBuilderPanel() {
             </select>
           </div>
 
-          {/* Таблица */}
           <div className="input-group small">
             <label>Таблица:</label>
             <input
@@ -139,7 +142,6 @@ export default function SqlBuilderPanel() {
             />
           </div>
 
-          {/* Поля */}
           <div className="input-group small">
             <label>Поля:</label>
             {fields.map((field, i) => (
@@ -156,61 +158,10 @@ export default function SqlBuilderPanel() {
             ))}
             <button className="add-btn" onClick={() => setFields([...fields, ""])}>➕ Добавить поле</button>
           </div>
-
-          {/* JOIN */}
-          <div className="input-group small">
-            <label>JOIN:</label>
-            {joins.map((j, i) => (
-              <div key={i} className="join-row compact-row">
-                <select
-                  value={j.type}
-                  onChange={(e) => {
-                    const updated = [...joins];
-                    updated[i].type = e.target.value as "INNER" | "LEFT" | "RIGHT" | "FULL";
-                    setJoins(updated);
-                  }}
-                >
-                  <option value="INNER">INNER</option>
-                  <option value="LEFT">LEFT</option>
-                  <option value="RIGHT">RIGHT</option>
-                  <option value="FULL">FULL</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Таблица"
-                  value={j.table}
-                  onChange={(e) => {
-                    const updated = [...joins];
-                    updated[i].table = e.target.value;
-                    setJoins(updated);
-                  }}
-                />
-                <input
-                  type="text"
-                  placeholder="ON (пример: users.id = orders.user_id)"
-                  value={j.on}
-                  onChange={(e) => {
-                    const updated = [...joins];
-                    updated[i].on = e.target.value;
-                    setJoins(updated);
-                  }}
-                />
-              </div>
-            ))}
-            <button
-              className="add-btn"
-              onClick={() => setJoins([...joins, { type: "INNER", table: "", on: "" }])}
-            >
-              ➕ Добавить JOIN
-            </button>
-          </div>
         </div>
 
-        {/* ===================== */}
-        {/* ПРАВАЯ КОЛОНКА */}
-        {/* ===================== */}
+        {/* Правая колонка */}
         <div className="builder-right">
-          {/* WHERE */}
           <div className="input-group small">
             <label>WHERE:</label>
             {filters.map((f, i) => (
@@ -256,7 +207,6 @@ export default function SqlBuilderPanel() {
             </button>
           </div>
 
-          {/* ORDER BY */}
           <div className="input-group small">
             <label>ORDER BY:</label>
             {orderBy.map((o, i) => (
@@ -289,7 +239,6 @@ export default function SqlBuilderPanel() {
             </button>
           </div>
 
-          {/* Транзакция */}
           <div className="transaction-box">
             <label className="transaction-label">
               <input
