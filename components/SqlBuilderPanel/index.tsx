@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { jsonToSql } from "../../utils/jsonToSql";
 
-
 interface SqlJoin {
   type: "INNER" | "LEFT" | "RIGHT" | "FULL";
   table: string;
@@ -19,11 +18,7 @@ interface SqlOrder {
   direction: "ASC" | "DESC";
 }
 
-interface SqlBuilderPanelProps {
-  onExecute?: (query: any) => Promise<void> | void;
-}
-
-export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
+export default function SqlBuilderPanel() {
   const [databases, setDatabases] = useState<{ name: string; connection: string; dbType: string }[]>([]);
   const [dbName, setDbName] = useState<string>("");
   const [connectionString, setConnectionString] = useState<string>("");
@@ -38,6 +33,9 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
   const [orderBy, setOrderBy] = useState<SqlOrder[]>([]);
   const [transaction, setTransaction] = useState<boolean>(false);
   const [generatedSQL, setGeneratedSQL] = useState<string>("");
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [queryResult, setQueryResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = localStorage.getItem("savedDatabases");
@@ -57,9 +55,27 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
     const jsonQuery = { table, fields, joins, filters, orderBy, transaction };
     const sql = jsonToSql(jsonQuery as any);
     setGeneratedSQL(sql);
+    setIsLoading(true);
+    setError(null);
 
-    if (onExecute) {
-      await onExecute(jsonQuery);
+    try {
+      const response = await fetch("/api/fetch-query", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(jsonQuery),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) throw new Error(result.error || "Ошибка при выполнении SQL");
+
+      console.log("✅ SQL выполнен:", result);
+      setQueryResult(result.data || []);
+    } catch (err: any) {
+      console.error("❌ Ошибка:", err);
+      setError(err.message);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -253,13 +269,23 @@ export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
       </div>
 
       <div className="action-group">
-        <button onClick={handleGenerateSQL}>⚡ Сгенерировать SQL</button>
+        <button onClick={handleGenerateSQL} disabled={isLoading}>
+          {isLoading ? "⏳ Выполняется..." : "⚡ Выполнить SQL"}
+        </button>
       </div>
 
       <div className="sql-output">
         <h3>🧾 Сгенерированный SQL:</h3>
         <pre>{generatedSQL}</pre>
       </div>
+
+      {error && <p className="error-text">❌ {error}</p>}
+      {queryResult && (
+        <div className="query-result">
+          <h3>📊 Результат:</h3>
+          <pre>{JSON.stringify(queryResult, null, 2)}</pre>
+        </div>
+      )}
     </div>
   );
 }
