@@ -18,165 +18,75 @@ interface SqlOrder {
   direction: "ASC" | "DESC";
 }
 
-interface Database {
-  name: string;
-  connection: string;
-  dbType: string;
+interface SqlBuilderPanelProps {
+  onExecute?: (query: any) => Promise<void> | void;
 }
 
-export default function SqlBuilderPanel() {
-  const [databases, setDatabases] = useState<Database[]>([]);
+export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
+  const [databases, setDatabases] = useState<{ name: string; connection: string; dbType: string }[]>([]);
   const [selectedDb, setSelectedDb] = useState<string>("default");
-  const [connectedDb, setConnectedDb] = useState<string | null>(null);
-  const [showSaved, setShowSaved] = useState<boolean>(false);
-
-  const [dbName, setDbName] = useState<string>("");
   const [connectionString, setConnectionString] = useState<string>("");
   const [dbType, setDbType] = useState<string>("postgres");
 
+  const [schema, setSchema] = useState<Record<string, string[]>>({});
+  const [table, setTable] = useState<string>("");
+  const [fields, setFields] = useState<string[]>([]);
   const [queryType, setQueryType] = useState<string>("SELECT");
-  const [table, setTable] = useState<string>("users");
-  const [fields, setFields] = useState<string[]>(["id", "name", "email"]);
-  const [joins, setJoins] = useState<SqlJoin[]>([]);
   const [filters, setFilters] = useState<SqlFilter[]>([]);
   const [orderBy, setOrderBy] = useState<SqlOrder[]>([]);
   const [transaction, setTransaction] = useState<boolean>(false);
-
   const [generatedSQL, setGeneratedSQL] = useState<string>("");
-  const [queryResult, setQueryResult] = useState<any>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loadingSchema, setLoadingSchema] = useState<boolean>(false);
 
-  // =============================
-  // 🧩 Загрузка сохранённых БД
-  // =============================
+  // Загружаем сохранённые подключения из localStorage
   useEffect(() => {
-    const local = localStorage.getItem("savedDatabases");
-    if (local) setDatabases(JSON.parse(local));
+    const saved = localStorage.getItem("savedDatabases");
+    if (saved) setDatabases(JSON.parse(saved));
   }, []);
 
-  // =============================
-  // 💾 Добавить новую БД
-  // =============================
-  const handleAddDatabase = () => {
-    if (!dbName || !connectionString.trim()) return alert("Введите имя и строку подключения!");
-    const updated = [...databases, { name: dbName, connection: connectionString, dbType }];
-    setDatabases(updated);
-    localStorage.setItem("savedDatabases", JSON.stringify(updated));
-    setDbName("");
-    setConnectionString("");
-    alert("✅ База добавлена в список");
-  };
-
-  // =============================
-  // 🗑 Удалить подключение
-  // =============================
-  const handleDeleteDatabase = (index: number) => {
-    const updated = databases.filter((_, i) => i !== index);
-    setDatabases(updated);
-    localStorage.setItem("savedDatabases", JSON.stringify(updated));
-  };
-
-  // =============================
-  // 🔌 Подключение к базе
-  // =============================
+  // 🔹 Подключение к выбранной базе и автоподтягивание схемы
   const handleConnect = async () => {
-    if (selectedDb === "default") {
-      setConnectedDb(null);
-      alert("Подключено к базе по умолчанию");
+    const selected = databases.find((db) => db.connection === selectedDb);
+    const conn = selected ? selected.connection : connectionString;
+
+    if (!conn) {
+      alert("Укажите строку подключения к базе данных");
       return;
     }
 
-    const db = databases.find((d) => d.connection === selectedDb);
-    if (!db) return alert("База не найдена");
+    setConnectionString(conn);
+    await fetchSchema(conn);
+  };
 
+  // 🔄 Обновление схемы вручную
+  const fetchSchema = async (conn: string) => {
     try {
-      setLoading(true);
-      const res = await fetch("/api/connect-db", {
+      setLoadingSchema(true);
+      const res = await fetch("/api/fetch-schema", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ connectionString: db.connection }),
+        body: JSON.stringify({ connectionString: conn }),
       });
       const result = await res.json();
-
-      if (!res.ok) throw new Error(result.error);
-      setConnectedDb(db.name);
-      alert(`✅ Подключено к базе: ${db.name}`);
+      if (!result.success) throw new Error(result.error || "Ошибка загрузки схемы");
+      setSchema(result.schema);
+      setTable(Object.keys(result.schema)[0] || "");
+      setFields(result.schema[Object.keys(result.schema)[0]] || []);
     } catch (err: any) {
-      alert("❌ Ошибка подключения: " + err.message);
+      alert("Ошибка при получении схемы: " + err.message);
     } finally {
-      setLoading(false);
+      setLoadingSchema(false);
     }
   };
 
-  // =============================
-  // 🔄 Загрузка схемы таблиц
-  // =============================
-  const handleLoadSchema = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("/api/fetch-schema");
-      const result = await res.json();
-      if (!result.success) throw new Error(result.error);
-      alert("✅ Схема успешно загружена!");
-      console.log(result.schema);
-    } catch (err: any) {
-      alert("❌ Ошибка при загрузке схемы: " + err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // =============================
-  // ⚡ Генерация и выполнение SQL
-  // =============================
+  // Генерация SQL и выполнение
   const handleGenerateSQL = async () => {
-    setError(null);
-    const cleanFields = fields.filter((f) => f.trim() !== "");
-    const jsonQuery = {
-      dbType,
-      queryType,
-      table,
-      fields: cleanFields,
-      joins,
-      filters,
-      orderBy,
-      transaction,
-    };
-
+    const jsonQuery = { table, fields, filters, orderBy, transaction, queryType, dbType };
     const sql = jsonToSql(jsonQuery as any);
     setGeneratedSQL(sql);
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/fetch-query", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(jsonQuery),
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error);
-      setQueryResult(result.data || []);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
+    if (onExecute) await onExecute(jsonQuery);
   };
 
-  // =============================
-  // 🗑 Удаление поля
-  // =============================
-  const handleDeleteField = (index: number) => {
-    const updated = [...fields];
-    updated.splice(index, 1);
-    setFields(updated);
-  };
-
-  // =============================
-  // 🖥️ Рендер
-  // =============================
   return (
     <div className="sql-builder-panel improved">
       <h2 className="panel-title">🧠 Визуальный SQL Конструктор</h2>
@@ -185,7 +95,7 @@ export default function SqlBuilderPanel() {
         {/* Левая колонка */}
         <div className="builder-left">
           <div className="input-group small">
-            <label>База данных:</label>
+            <label>Подключение:</label>
             <select value={selectedDb} onChange={(e) => setSelectedDb(e.target.value)}>
               <option value="default">Текущая (по умолчанию)</option>
               {databases.map((db, i) => (
@@ -193,63 +103,16 @@ export default function SqlBuilderPanel() {
                   {db.name} ({db.dbType})
                 </option>
               ))}
-              <option value="new">➕ Добавить новую</option>
             </select>
-            <button onClick={() => setShowSaved(!showSaved)}>📂 Сохранённые базы</button>
+            <button onClick={handleConnect} className="add-btn ml-2">🔗 Подключиться</button>
+            <button
+              onClick={() => fetchSchema(connectionString)}
+              className="add-btn ml-2"
+              disabled={!connectionString || loadingSchema}
+            >
+              🔄 Обновить схему
+            </button>
           </div>
-
-          {showSaved && (
-            <div className="saved-db-list">
-              <h4>💾 Сохранённые подключения</h4>
-              {databases.length === 0 && <p>Пока нет сохранённых баз</p>}
-              {databases.map((db, i) => (
-                <div key={i} className="saved-db-item">
-                  <span>{db.name} ({db.dbType})</span>
-                  <div>
-                    <button onClick={() => setSelectedDb(db.connection)}>🔌</button>
-                    <button onClick={() => handleDeleteDatabase(i)}>🗑</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {selectedDb === "new" && (
-            <div className="db-add-block">
-              <div className="input-group small">
-                <label>Имя подключения:</label>
-                <input value={dbName} onChange={(e) => setDbName(e.target.value)} />
-              </div>
-
-              <div className="input-group small">
-                <label>Connection String:</label>
-                <input value={connectionString} onChange={(e) => setConnectionString(e.target.value)} />
-              </div>
-
-              <div className="input-group small">
-                <label>SQL модель:</label>
-                <select value={dbType} onChange={(e) => setDbType(e.target.value)}>
-                  <option value="postgres">PostgreSQL</option>
-                  <option value="mysql">MySQL</option>
-                  <option value="sqlite">SQLite</option>
-                  <option value="mssql">MS SQL</option>
-                  <option value="oracle">Oracle</option>
-                </select>
-              </div>
-
-              <button className="add-btn save-db" onClick={handleAddDatabase}>
-                💾 Сохранить подключение
-              </button>
-            </div>
-          )}
-
-          <button className="connect-btn" onClick={handleConnect} disabled={loading}>
-            {connectedDb ? `🔗 Подключено: ${connectedDb}` : "🔌 Подключиться"}
-          </button>
-
-          <button className="schema-btn" onClick={handleLoadSchema} disabled={loading}>
-            🔄 Загрузить схему
-          </button>
 
           <div className="input-group small">
             <label>Тип SQL-запроса:</label>
@@ -263,30 +126,46 @@ export default function SqlBuilderPanel() {
 
           <div className="input-group small">
             <label>Таблица:</label>
-            <input value={table} onChange={(e) => setTable(e.target.value)} placeholder="users" />
+            <select value={table} onChange={(e) => {
+              setTable(e.target.value);
+              setFields(schema[e.target.value] || []);
+            }}>
+              <option value="">— выбери таблицу —</option>
+              {Object.keys(schema).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
           </div>
 
           <div className="input-group small">
             <label>Поля:</label>
-            {fields.map((field, i) => (
-              <div key={i} className="field-row">
-                <input
-                  type="text"
-                  value={field}
-                  onChange={(e) => {
-                    const updated = [...fields];
-                    updated[i] = e.target.value;
-                    setFields(updated);
-                  }}
-                />
-                <button type="button" className="delete-field-btn" onClick={() => handleDeleteField(i)}>
-                  🗑
-                </button>
-              </div>
-            ))}
-            <button className="add-btn" onClick={() => setFields([...fields, ""])}>
-              ➕ Добавить поле
-            </button>
+            {fields.length === 0 ? (
+              <p className="note">Выбери таблицу для отображения полей</p>
+            ) : (
+              fields.map((field, i) => (
+                <div key={i} className="field-row compact-row">
+                  <select
+                    value={field}
+                    onChange={(e) => {
+                      const updated = [...fields];
+                      updated[i] = e.target.value;
+                      setFields(updated);
+                    }}
+                  >
+                    {schema[table]?.map((col) => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="remove-btn"
+                    onClick={() => setFields(fields.filter((_, idx) => idx !== i))}
+                  >
+                    ❌
+                  </button>
+                </div>
+              ))
+            )}
+            <button className="add-btn" onClick={() => setFields([...fields, ""])}>➕ Добавить поле</button>
           </div>
         </div>
 
@@ -296,16 +175,19 @@ export default function SqlBuilderPanel() {
             <label>WHERE:</label>
             {filters.map((f, i) => (
               <div key={i} className="filter-row compact-row">
-                <input
-                  type="text"
-                  placeholder="Поле"
+                <select
                   value={f.field}
                   onChange={(e) => {
                     const updated = [...filters];
                     updated[i].field = e.target.value;
                     setFilters(updated);
                   }}
-                />
+                >
+                  <option value="">Поле</option>
+                  {schema[table]?.map((col) => (
+                    <option key={col} value={col}>{col}</option>
+                  ))}
+                </select>
                 <select
                   value={f.op}
                   onChange={(e) => {
@@ -341,16 +223,19 @@ export default function SqlBuilderPanel() {
             <label>ORDER BY:</label>
             {orderBy.map((o, i) => (
               <div key={i} className="order-row compact-row">
-                <input
-                  type="text"
-                  placeholder="Поле"
+                <select
                   value={o.field}
                   onChange={(e) => {
                     const updated = [...orderBy];
                     updated[i].field = e.target.value;
                     setOrderBy(updated);
                   }}
-                />
+                >
+                  <option value="">Поле</option>
+                  {schema[table]?.map((col) => (
+                    <option key={col} value={col}>{col}</option>
+                  ))}
+                </select>
                 <select
                   value={o.direction}
                   onChange={(e) => {
@@ -368,27 +253,28 @@ export default function SqlBuilderPanel() {
               ➕ Добавить ORDER
             </button>
           </div>
+
+          <div className="transaction-box">
+            <label className="transaction-label">
+              <input
+                type="checkbox"
+                checked={transaction}
+                onChange={(e) => setTransaction(e.target.checked)}
+              />
+              Использовать транзакцию (BEGIN / COMMIT)
+            </label>
+          </div>
         </div>
       </div>
 
       <div className="action-group">
-        <button onClick={handleGenerateSQL} disabled={loading}>
-          {loading ? "⏳ Выполняется..." : "⚡ Выполнить SQL"}
-        </button>
+        <button onClick={handleGenerateSQL}>⚡ Выполнить SQL</button>
       </div>
 
       <div className="sql-output">
         <h3>🧾 Сгенерированный SQL:</h3>
         <pre>{generatedSQL}</pre>
       </div>
-
-      {error && <p className="error-text">❌ {error}</p>}
-      {queryResult && (
-        <div className="query-result">
-          <h3>📊 Результат:</h3>
-          <pre>{JSON.stringify(queryResult, null, 2)}</pre>
-        </div>
-      )}
     </div>
   );
 }
