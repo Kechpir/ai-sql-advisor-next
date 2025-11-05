@@ -1,9 +1,14 @@
 // /pages/api/fetch-query.ts
 import type { NextApiRequest, NextApiResponse } from "next";
 import { jsonToSql } from "../../utils/jsonToSql";
+import { createClient } from "@supabase/supabase-js";
+
+// 🔐 Подключение к Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Разрешаем только POST
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Метод не поддерживается" });
   }
@@ -11,52 +16,45 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   try {
     const jsonBody = req.body;
 
-    // 🔒 Валидация
+    // 🧩 Валидация
     if (!jsonBody || typeof jsonBody !== "object" || !jsonBody.table) {
       return res.status(400).json({ error: "Неверный формат запроса" });
     }
 
-    // 🚦 Генерация SQL
+    // 🧠 Генерация SQL
     const sql = jsonToSql(jsonBody);
 
-    // 🚫 Проверка на опасные команды
-    const forbidden = /(DROP|ALTER|TRUNCATE|GRANT|REVOKE|CREATE)/i;
+    // 🚫 Безопасность
+    const forbidden = /(DROP|ALTER|TRUNCATE|GRANT|REVOKE|CREATE|DELETE\s+FROM\s+users)/i;
     if (forbidden.test(sql)) {
       return res.status(403).json({
         safe: false,
         blocked: true,
         sql,
-        error: "Опасная команда запрещена",
+        error: "Опасная SQL-команда заблокирована",
       });
     }
 
-    // 🌐 Вызов Supabase Edge Function execute_sql
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/execute_sql`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({ sql_text: sql }),
-      }
-    );
+    // ⚙️ Выполнение SQL через RPC
+    const { data, error } = await supabase.rpc("execute_sql", { sql_text: sql });
 
-    const result = await response.json();
-
-    if (!response.ok) {
-      console.error("SQL Error:", result);
-      return res.status(500).json({ sql, error: result.error || "Ошибка при выполнении SQL" });
+    if (error) {
+      console.error("SQL Error:", error);
+      return res.status(500).json({ sql, error: error.message });
     }
 
-    // ✅ Успешный ответ
+    // 📊 Преобразуем результат
+    const rows = Array.isArray(data) ? data : [];
+    const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+
+    // ✅ Возвращаем в удобном формате
     return res.status(200).json({
+      success: true,
       sql,
-      data: result.data || [],
-      safe: true,
+      columns,
+      rows,
     });
-  } catch (err) {
+  } catch (err: any) {
     console.error("Ошибка API:", err);
     return res.status(500).json({ error: (err as Error).message });
   }
