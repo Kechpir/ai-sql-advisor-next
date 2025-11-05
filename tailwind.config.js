@@ -3,14 +3,14 @@ module.exports = {
   content: [
     "./pages/**/*.{js,ts,jsx,tsx}",
     "./components/**/*.{js,ts,jsx,tsx}",
-    "./styles/**/*.{css,scss}"
   ],
   theme: {
     extend: {
       colors: {
-        neon: "#00ffff",
-        darkblue: "#0B1221",
-        steelblue: "#233861"
+        neon: {
+          blue: "#00f5ff",
+          cyan: "#00e0ff",
+        },
       },
     },
   },
