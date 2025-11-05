@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { jsonToSql } from "../../utils/jsonToSql";
 
-interface SqlJoin {
-  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
-  table: string;
-  on: string;
-}
-
 interface SqlFilter {
   field: string;
   op: string;
@@ -18,305 +12,258 @@ interface SqlOrder {
   direction: "ASC" | "DESC";
 }
 
-interface SqlBuilderPanelProps {
-  onExecute: (query: any) => Promise<void> | void;
+interface SqlJoin {
+  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
+  table: string;
+  on: string;
 }
 
-export default function SqlBuilderPanel({ onExecute }: SqlBuilderPanelProps) {
+export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => void }) {
+  const [connectionString, setConnectionString] = useState("");
   const [schema, setSchema] = useState<Record<string, any[]> | null>(null);
-  const [selectedTable, setSelectedTable] = useState<string>("");
+  const [selectedTable, setSelectedTable] = useState("");
   const [fields, setFields] = useState<string[]>([]);
   const [filters, setFilters] = useState<SqlFilter[]>([]);
   const [orderBy, setOrderBy] = useState<SqlOrder[]>([]);
   const [joins, setJoins] = useState<SqlJoin[]>([]);
-  const [groupBy, setGroupBy] = useState<string[]>([]);
-  const [aggFunc, setAggFunc] = useState<string>("");
-  const [transaction, setTransaction] = useState<boolean>(false);
-  const [generatedSQL, setGeneratedSQL] = useState<string>("");
+  const [generatedSQL, setGeneratedSQL] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  // 🚀 Подгружаем схему при старте
-  useEffect(() => {
-    fetchSchema();
-  }, []);
-
+  // Автоподгрузка схемы
   const fetchSchema = async () => {
+    if (!connectionString) return;
+    setLoading(true);
     try {
-      const res = await fetch("/api/fetch-schema");
+      const res = await fetch("/api/fetch-schema", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connectionString }),
+      });
       const data = await res.json();
       if (data.success) {
         setSchema(data.schema);
       } else {
-        console.error("Ошибка загрузки схемы:", data.error);
+        console.error(data.error);
       }
-    } catch (e) {
-      console.error("Ошибка запроса схемы:", e);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleGenerateSQL = async () => {
-    const jsonQuery = {
+  const handleExecute = async () => {
+    const query = {
+      dbType: "postgres",
       queryType: "SELECT",
       table: selectedTable,
       fields,
       filters,
       orderBy,
       joins,
-      groupBy,
-      transaction,
-      aggFunc,
     };
-
-    const sql = jsonToSql(jsonQuery as any);
+    const sql = jsonToSql(query);
     setGeneratedSQL(sql);
-
-    if (onExecute) {
-      await onExecute(jsonQuery);
-    }
+    onExecute(query);
   };
 
-  // 🔧 UI helpers
-  const addField = () => setFields([...fields, ""]);
-  const removeField = (index: number) => setFields(fields.filter((_, i) => i !== index));
-  const addFilter = () => setFilters([...filters, { field: "", op: "=", value: "" }]);
-  const removeFilter = (index: number) => setFilters(filters.filter((_, i) => i !== index));
-  const addOrder = () => setOrderBy([...orderBy, { field: "", direction: "ASC" }]);
-  const removeOrder = (index: number) => setOrderBy(orderBy.filter((_, i) => i !== index));
-  const addJoin = () => setJoins([...joins, { type: "INNER", table: "", on: "" }]);
-  const removeJoin = (index: number) => setJoins(joins.filter((_, i) => i !== index));
-
   return (
-    <div className="bg-gray-900 p-6 rounded-2xl shadow-lg text-gray-100">
-      <div className="flex justify-between items-center mb-4">
-        <h2 className="text-xl font-bold">🧠 Визуальный SQL Конструктор</h2>
+    <div className="p-6 bg-[#0B1221] text-gray-100 rounded-2xl shadow-xl border border-[#1e2b46]">
+      <h2 className="text-2xl font-semibold mb-6 text-cyan-400 drop-shadow-[0_0_6px_rgba(0,255,255,0.7)]">
+        💠 Визуальный SQL Конструктор
+      </h2>
+
+      {/* Подключение к БД */}
+      <div className="flex gap-2 mb-4 items-center">
+        <input
+          value={connectionString}
+          onChange={(e) => setConnectionString(e.target.value)}
+          placeholder="postgres://user:password@host/db"
+          className="flex-1 p-2 rounded bg-[#101a33] border border-[#233861] focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+        />
         <button
           onClick={fetchSchema}
-          className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded text-sm"
+          className="bg-cyan-600 hover:bg-cyan-500 px-4 py-2 rounded text-sm font-medium transition-all shadow-[0_0_10px_#00ffff80]"
         >
-          🔄 Обновить схему
+          🔄 Подключить / Обновить
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-6">
-        {/* Левая колонка */}
-        <div>
-          <div className="mb-4">
-            <label className="block text-sm mb-1">📋 Таблица:</label>
+      {/* Таблицы */}
+      <div className="mb-4">
+        <label className="block text-sm mb-1 text-cyan-300">Таблица:</label>
+        <select
+          className="w-full bg-[#101a33] border border-[#233861] rounded p-2 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          value={selectedTable}
+          onChange={(e) => {
+            setSelectedTable(e.target.value);
+            if (schema && schema[e.target.value]) {
+              setFields(schema[e.target.value].map((col) => col.column));
+            }
+          }}
+        >
+          <option value="">— выберите таблицу —</option>
+          {schema &&
+            Object.keys(schema).map((table) => (
+              <option key={table} value={table}>
+                {table}
+              </option>
+            ))}
+        </select>
+      </div>
+
+      {/* Поля */}
+      <div className="mb-4">
+        <label className="block text-sm mb-1 text-cyan-300">Поля:</label>
+        {fields.map((f, i) => (
+          <div key={i} className="flex gap-2 mb-2">
             <select
-              className="w-full bg-gray-800 border border-gray-700 rounded p-2"
-              value={selectedTable}
+              value={f}
               onChange={(e) => {
-                const table = e.target.value;
-                setSelectedTable(table);
-                if (schema && schema[table]) {
-                  setFields(schema[table].map((f) => f.column));
-                }
+                const updated = [...fields];
+                updated[i] = e.target.value;
+                setFields(updated);
               }}
+              className="flex-1 bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
             >
-              <option value="">— выберите таблицу —</option>
               {schema &&
-                Object.keys(schema).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
+                selectedTable &&
+                schema[selectedTable]?.map((col) => (
+                  <option key={col.column} value={col.column}>
+                    {col.column}
                   </option>
                 ))}
             </select>
-          </div>
-
-          <div className="mb-4">
-            <label className="block text-sm mb-1">📊 Поля:</label>
-            {fields.map((f, i) => (
-              <div key={i} className="flex gap-2 mb-1">
-                <select
-                  value={f}
-                  onChange={(e) => {
-                    const updated = [...fields];
-                    updated[i] = e.target.value;
-                    setFields(updated);
-                  }}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded p-2"
-                >
-                  <option value="">— выберите поле —</option>
-                  {schema &&
-                    selectedTable &&
-                    schema[selectedTable]?.map((col) => (
-                      <option key={col.column} value={col.column}>
-                        {col.column}
-                      </option>
-                    ))}
-                </select>
-                <button
-                  onClick={() => removeField(i)}
-                  className="bg-red-600 hover:bg-red-700 px-2 rounded"
-                >
-                  ✖
-                </button>
-              </div>
-            ))}
             <button
-              onClick={addField}
-              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm mt-1"
+              onClick={() => setFields(fields.filter((_, idx) => idx !== i))}
+              className="bg-red-600 hover:bg-red-500 px-3 rounded shadow-[0_0_8px_#ff2e2e]"
             >
-              ➕ Добавить поле
+              ✖
             </button>
           </div>
-
-          {/* GROUP BY */}
-          <div className="mb-4">
-            <label className="block text-sm mb-1">🧩 GROUP BY:</label>
-            <input
-              className="w-full bg-gray-800 border border-gray-700 rounded p-2"
-              placeholder="Например: category_id"
-              value={groupBy.join(", ")}
-              onChange={(e) => setGroupBy(e.target.value.split(",").map((s) => s.trim()))}
-            />
-          </div>
-
-          {/* Агрегат */}
-          <div className="mb-4">
-            <label className="block text-sm mb-1">Σ Агрегатная функция:</label>
-            <select
-              value={aggFunc}
-              onChange={(e) => setAggFunc(e.target.value)}
-              className="w-full bg-gray-800 border border-gray-700 rounded p-2"
-            >
-              <option value="">— без агрегата —</option>
-              <option value="COUNT">COUNT</option>
-              <option value="SUM">SUM</option>
-              <option value="AVG">AVG</option>
-              <option value="MAX">MAX</option>
-              <option value="MIN">MIN</option>
-            </select>
-          </div>
-        </div>
-
-        {/* Правая колонка */}
-        <div>
-          {/* WHERE */}
-          <div className="mb-4">
-            <label className="block text-sm mb-1">⚙️ WHERE:</label>
-            {filters.map((f, i) => (
-              <div key={i} className="flex gap-2 mb-1">
-                <input
-                  type="text"
-                  placeholder="Поле"
-                  value={f.field}
-                  onChange={(e) => {
-                    const updated = [...filters];
-                    updated[i].field = e.target.value;
-                    setFilters(updated);
-                  }}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded p-2"
-                />
-                <select
-                  value={f.op}
-                  onChange={(e) => {
-                    const updated = [...filters];
-                    updated[i].op = e.target.value;
-                    setFilters(updated);
-                  }}
-                  className="bg-gray-800 border border-gray-700 rounded p-2"
-                >
-                  <option>=</option>
-                  <option>!=</option>
-                  <option>&gt;</option>
-                  <option>&lt;</option>
-                  <option>LIKE</option>
-                </select>
-                <input
-                  type="text"
-                  placeholder="Значение"
-                  value={f.value}
-                  onChange={(e) => {
-                    const updated = [...filters];
-                    updated[i].value = e.target.value;
-                    setFilters(updated);
-                  }}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded p-2"
-                />
-                <button
-                  onClick={() => removeFilter(i)}
-                  className="bg-red-600 hover:bg-red-700 px-2 rounded"
-                >
-                  ✖
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addFilter}
-              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm mt-1"
-            >
-              ➕ Добавить фильтр
-            </button>
-          </div>
-
-          {/* ORDER */}
-          <div className="mb-4">
-            <label className="block text-sm mb-1">↕ ORDER BY:</label>
-            {orderBy.map((o, i) => (
-              <div key={i} className="flex gap-2 mb-1">
-                <input
-                  type="text"
-                  placeholder="Поле"
-                  value={o.field}
-                  onChange={(e) => {
-                    const updated = [...orderBy];
-                    updated[i].field = e.target.value;
-                    setOrderBy(updated);
-                  }}
-                  className="flex-1 bg-gray-800 border border-gray-700 rounded p-2"
-                />
-                <select
-                  value={o.direction}
-                  onChange={(e) => {
-                    const updated = [...orderBy];
-                    updated[i].direction = e.target.value as "ASC" | "DESC";
-                    setOrderBy(updated);
-                  }}
-                  className="bg-gray-800 border border-gray-700 rounded p-2"
-                >
-                  <option value="ASC">ASC</option>
-                  <option value="DESC">DESC</option>
-                </select>
-                <button
-                  onClick={() => removeOrder(i)}
-                  className="bg-red-600 hover:bg-red-700 px-2 rounded"
-                >
-                  ✖
-                </button>
-              </div>
-            ))}
-            <button
-              onClick={addOrder}
-              className="bg-gray-700 hover:bg-gray-600 px-3 py-1 rounded text-sm mt-1"
-            >
-              ➕ Добавить ORDER
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Выполнить */}
-      <div className="mt-6 flex justify-between items-center">
-        <label className="text-sm flex items-center gap-2">
-          <input
-            type="checkbox"
-            checked={transaction}
-            onChange={(e) => setTransaction(e.target.checked)}
-          />
-          Использовать транзакцию (BEGIN / COMMIT)
-        </label>
+        ))}
         <button
-          onClick={handleGenerateSQL}
-          className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded font-semibold"
+          onClick={() => setFields([...fields, ""])}
+          className="bg-[#1a2a55] hover:bg-[#233a77] px-4 py-1 rounded text-sm text-cyan-300 shadow-[0_0_8px_#00ffff80]"
         >
-          ⚡ Выполнить SQL
+          ➕ Добавить поле
         </button>
       </div>
 
-      {/* SQL */}
+      {/* WHERE */}
+      <div className="mb-4">
+        <label className="block text-sm mb-1 text-cyan-300">WHERE:</label>
+        {filters.map((f, i) => (
+          <div key={i} className="flex gap-2 mb-2">
+            <input
+              value={f.field}
+              onChange={(e) => {
+                const updated = [...filters];
+                updated[i].field = e.target.value;
+                setFilters(updated);
+              }}
+              placeholder="Поле"
+              className="flex-1 bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
+            />
+            <select
+              value={f.op}
+              onChange={(e) => {
+                const updated = [...filters];
+                updated[i].op = e.target.value;
+                setFilters(updated);
+              }}
+              className="bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
+            >
+              <option>=</option>
+              <option>!=</option>
+              <option>&gt;</option>
+              <option>&lt;</option>
+              <option>LIKE</option>
+            </select>
+            <input
+              value={f.value}
+              onChange={(e) => {
+                const updated = [...filters];
+                updated[i].value = e.target.value;
+                setFilters(updated);
+              }}
+              placeholder="Значение"
+              className="flex-1 bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
+            />
+            <button
+              onClick={() => setFilters(filters.filter((_, idx) => idx !== i))}
+              className="bg-red-600 hover:bg-red-500 px-3 rounded shadow-[0_0_8px_#ff2e2e]"
+            >
+              ✖
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => setFilters([...filters, { field: "", op: "=", value: "" }])}
+          className="bg-[#1a2a55] hover:bg-[#233a77] px-4 py-1 rounded text-sm text-cyan-300 shadow-[0_0_8px_#00ffff80]"
+        >
+          ➕ Добавить фильтр
+        </button>
+      </div>
+
+      {/* ORDER */}
+      <div className="mb-6">
+        <label className="block text-sm mb-1 text-cyan-300">ORDER BY:</label>
+        {orderBy.map((o, i) => (
+          <div key={i} className="flex gap-2 mb-2">
+            <input
+              value={o.field}
+              onChange={(e) => {
+                const updated = [...orderBy];
+                updated[i].field = e.target.value;
+                setOrderBy(updated);
+              }}
+              placeholder="Поле"
+              className="flex-1 bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
+            />
+            <select
+              value={o.direction}
+              onChange={(e) => {
+                const updated = [...orderBy];
+                updated[i].direction = e.target.value as "ASC" | "DESC";
+                setOrderBy(updated);
+              }}
+              className="bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
+            >
+              <option>ASC</option>
+              <option>DESC</option>
+            </select>
+            <button
+              onClick={() => setOrderBy(orderBy.filter((_, idx) => idx !== i))}
+              className="bg-red-600 hover:bg-red-500 px-3 rounded shadow-[0_0_8px_#ff2e2e]"
+            >
+              ✖
+            </button>
+          </div>
+        ))}
+        <button
+          onClick={() => setOrderBy([...orderBy, { field: "", direction: "ASC" }])}
+          className="bg-[#1a2a55] hover:bg-[#233a77] px-4 py-1 rounded text-sm text-cyan-300 shadow-[0_0_8px_#00ffff80]"
+        >
+          ➕ Добавить ORDER
+        </button>
+      </div>
+
+      {/* Выполнить SQL */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleExecute}
+          disabled={loading}
+          className="bg-green-600 hover:bg-green-500 px-5 py-2 rounded font-semibold text-sm shadow-[0_0_10px_#00ff95] transition-all"
+        >
+          ⚡ {loading ? "Загрузка..." : "Выполнить SQL"}
+        </button>
+      </div>
+
+      {/* Сгенерированный SQL */}
       {generatedSQL && (
-        <div className="mt-4 bg-gray-800 p-3 rounded border border-gray-700 text-sm text-gray-300">
-          <div className="mb-1 font-semibold text-gray-400">🧾 Сгенерированный SQL:</div>
+        <div className="mt-5 bg-[#0f1a2e] p-3 rounded-lg border border-[#1e3558] text-xs text-cyan-200">
+          <div className="mb-1 font-semibold text-gray-300">🧾 Сгенерированный SQL:</div>
           <pre className="whitespace-pre-wrap">{generatedSQL}</pre>
         </div>
       )}
