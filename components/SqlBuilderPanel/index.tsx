@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { jsonToSql } from "../../utils/jsonToSql";
+import { Button } from "../ui/button";
 
 interface SqlFilter {
   field: string;
@@ -12,12 +13,6 @@ interface SqlOrder {
   direction: "ASC" | "DESC";
 }
 
-interface SqlJoin {
-  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
-  table: string;
-  on: string;
-}
-
 export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => void }) {
   const [connectionString, setConnectionString] = useState("");
   const [schema, setSchema] = useState<Record<string, any[]> | null>(null);
@@ -25,11 +20,10 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
   const [fields, setFields] = useState<string[]>([]);
   const [filters, setFilters] = useState<SqlFilter[]>([]);
   const [orderBy, setOrderBy] = useState<SqlOrder[]>([]);
-  const [joins, setJoins] = useState<SqlJoin[]>([]);
   const [generatedSQL, setGeneratedSQL] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Автоподгрузка схемы
+  // 🔹 Загрузка схемы таблиц
   const fetchSchema = async () => {
     if (!connectionString) return;
     setLoading(true);
@@ -40,11 +34,7 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
         body: JSON.stringify({ connectionString }),
       });
       const data = await res.json();
-      if (data.success) {
-        setSchema(data.schema);
-      } else {
-        console.error(data.error);
-      }
+      if (data.success) setSchema(data.schema);
     } catch (err) {
       console.error(err);
     } finally {
@@ -52,7 +42,8 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
     }
   };
 
-  const handleExecute = async () => {
+  // 🔹 Генерация и выполнение SQL
+  const handleExecute = () => {
     const query = {
       dbType: "postgres",
       queryType: "SELECT",
@@ -60,7 +51,6 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
       fields,
       filters,
       orderBy,
-      joins,
     };
     const sql = jsonToSql(query);
     setGeneratedSQL(sql);
@@ -70,30 +60,27 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
   return (
     <div className="p-6 bg-[#0B1221] text-gray-100 rounded-2xl shadow-xl border border-[#1e2b46]">
       <h2 className="text-2xl font-semibold mb-6 text-cyan-400 drop-shadow-[0_0_6px_rgba(0,255,255,0.7)]">
-        💠 Визуальный SQL Конструктор
+        🧠 Визуальный SQL Конструктор
       </h2>
 
-      {/* Подключение к БД */}
-      <div className="flex gap-2 mb-4 items-center">
+      {/* Подключение */}
+      <div className="flex gap-2 mb-4">
         <input
           value={connectionString}
           onChange={(e) => setConnectionString(e.target.value)}
           placeholder="postgres://user:password@host/db"
-          className="flex-1 p-2 rounded bg-[#101a33] border border-[#233861] focus:outline-none focus:ring-2 focus:ring-cyan-500 text-sm"
+          className="flex-1 p-2 rounded bg-[#101a33] border border-[#233861] focus:ring-2 focus:ring-cyan-500 text-sm"
         />
-        <button
-          onClick={fetchSchema}
-          className="bg-cyan-600 hover:bg-cyan-500 px-4 py-2 rounded text-sm font-medium transition-all shadow-[0_0_10px_#00ffff80]"
-        >
+        <Button onClick={fetchSchema} variant="primary">
           🔄 Подключить / Обновить
-        </button>
+        </Button>
       </div>
 
       {/* Таблицы */}
       <div className="mb-4">
         <label className="block text-sm mb-1 text-cyan-300">Таблица:</label>
         <select
-          className="w-full bg-[#101a33] border border-[#233861] rounded p-2 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+          className="w-full bg-[#101a33] border border-[#233861] rounded p-2 focus:ring-2 focus:ring-cyan-500"
           value={selectedTable}
           onChange={(e) => {
             setSelectedTable(e.target.value);
@@ -117,7 +104,7 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
         <label className="block text-sm mb-1 text-cyan-300">Поля:</label>
         {fields.map((f, i) => (
           <div key={i} className="flex gap-2 mb-2">
-            <select
+            <input
               value={f}
               onChange={(e) => {
                 const updated = [...fields];
@@ -125,29 +112,22 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
                 setFields(updated);
               }}
               className="flex-1 bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
-            >
-              {schema &&
-                selectedTable &&
-                schema[selectedTable]?.map((col) => (
-                  <option key={col.column} value={col.column}>
-                    {col.column}
-                  </option>
-                ))}
-            </select>
-            <button
+            />
+            <Button
               onClick={() => setFields(fields.filter((_, idx) => idx !== i))}
-              className="bg-red-600 hover:bg-red-500 px-3 rounded shadow-[0_0_8px_#ff2e2e]"
+              variant="danger"
             >
               ✖
-            </button>
+            </Button>
           </div>
         ))}
-        <button
+        <Button
           onClick={() => setFields([...fields, ""])}
-          className="bg-[#1a2a55] hover:bg-[#233a77] px-4 py-1 rounded text-sm text-cyan-300 shadow-[0_0_8px_#00ffff80]"
+          variant="ghost"
+          className="mt-2"
         >
           ➕ Добавить поле
-        </button>
+        </Button>
       </div>
 
       {/* WHERE */}
@@ -190,20 +170,20 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
               placeholder="Значение"
               className="flex-1 bg-[#101a33] border border-[#233861] rounded p-2 text-sm"
             />
-            <button
+            <Button
               onClick={() => setFilters(filters.filter((_, idx) => idx !== i))}
-              className="bg-red-600 hover:bg-red-500 px-3 rounded shadow-[0_0_8px_#ff2e2e]"
+              variant="danger"
             >
               ✖
-            </button>
+            </Button>
           </div>
         ))}
-        <button
+        <Button
           onClick={() => setFilters([...filters, { field: "", op: "=", value: "" }])}
-          className="bg-[#1a2a55] hover:bg-[#233a77] px-4 py-1 rounded text-sm text-cyan-300 shadow-[0_0_8px_#00ffff80]"
+          variant="ghost"
         >
           ➕ Добавить фильтр
-        </button>
+        </Button>
       </div>
 
       {/* ORDER */}
@@ -233,34 +213,35 @@ export default function SqlBuilderPanel({ onExecute }: { onExecute: (q: any) => 
               <option>ASC</option>
               <option>DESC</option>
             </select>
-            <button
+            <Button
               onClick={() => setOrderBy(orderBy.filter((_, idx) => idx !== i))}
-              className="bg-red-600 hover:bg-red-500 px-3 rounded shadow-[0_0_8px_#ff2e2e]"
+              variant="danger"
             >
               ✖
-            </button>
+            </Button>
           </div>
         ))}
-        <button
+        <Button
           onClick={() => setOrderBy([...orderBy, { field: "", direction: "ASC" }])}
-          className="bg-[#1a2a55] hover:bg-[#233a77] px-4 py-1 rounded text-sm text-cyan-300 shadow-[0_0_8px_#00ffff80]"
+          variant="ghost"
         >
           ➕ Добавить ORDER
-        </button>
+        </Button>
       </div>
 
-      {/* Выполнить SQL */}
+      {/* Выполнить */}
       <div className="flex justify-end">
-        <button
+        <Button
           onClick={handleExecute}
           disabled={loading}
-          className="bg-green-600 hover:bg-green-500 px-5 py-2 rounded font-semibold text-sm shadow-[0_0_10px_#00ff95] transition-all"
+          variant="primary"
+          className="px-6 py-2 font-semibold"
         >
           ⚡ {loading ? "Загрузка..." : "Выполнить SQL"}
-        </button>
+        </Button>
       </div>
 
-      {/* Сгенерированный SQL */}
+      {/* SQL */}
       {generatedSQL && (
         <div className="mt-5 bg-[#0f1a2e] p-3 rounded-lg border border-[#1e3558] text-xs text-cyan-200">
           <div className="mb-1 font-semibold text-gray-300">🧾 Сгенерированный SQL:</div>

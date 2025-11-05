@@ -1,3 +1,6 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 /* Базовый ресет и стабильная раскладка */
 * { box-sizing: border-box; }
 html, body, #__next { height: 100%; margin: 0; }
