@@ -1,10 +1,10 @@
 import React from "react";
-import "../styles/sql-interface.css";
 
 interface DataTableProps {
   data: any[];
   columns?: string[];
 }
+
 
 export default function DataTable({ data, columns }: DataTableProps) {
   if (!data || data.length === 0) {
