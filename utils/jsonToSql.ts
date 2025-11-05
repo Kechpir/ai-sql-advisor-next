@@ -44,51 +44,58 @@ export function jsonToSql(query: SqlQueryJSON): string {
 
   switch (cmd) {
     // ======================================================
-    // 🔹 SELECT
-    // ======================================================
-    case "SELECT": {
-      if (!query.fields?.length) throw new Error("Нет полей SELECT.");
+// 🔹 SELECT
+// ======================================================
+case "SELECT": {
+  if (!query.fields?.length) throw new Error("Нет полей SELECT.");
 
-      const selectClause = query.fields.join(", ");
-      const fromClause = `FROM ${query.table}`;
-      const joinClause = (query.joins || [])
-        .map((j) => `${j.type} JOIN ${j.table} ON ${j.on}`)
-        .join(" ");
-      const whereClause =
-        query.filters && query.filters.length > 0
-          ? "WHERE " +
-            query.filters
-              .map((f) => {
-                const val =
-                  typeof f.value === "string"
-                    ? `'${f.value.replace(/'/g, "''")}'`
-                    : f.value;
-                return `${f.field} ${f.op} ${val}`;
-              })
-              .join(" AND ")
-          : "";
-      const groupByClause =
-        query.groupBy && query.groupBy.length > 0
-          ? "GROUP BY " + query.groupBy.join(", ")
-          : "";
-      const orderByClause =
-        query.orderBy && query.orderBy.length > 0
-          ? "ORDER BY " +
-            query.orderBy
-              .map((o) => `${o.field} ${o.direction || "ASC"}`)
-              .join(", ")
-          : "";
+  // 🔧 Фикс: фильтруем пустые поля, чтобы не было "SELECT id, , FROM ..."
+  const validFields = query.fields.filter((f) => f && f.trim() !== "");
+  const selectClause = validFields.length ? validFields.join(", ") : "*";
 
-      const limitClause =
-        query.limit && dbType === "mssql"
-          ? `TOP ${query.limit}`
-          : query.limit
-          ? `LIMIT ${query.limit}`
-          : "";
+  const fromClause = `FROM ${query.table}`;
+  const joinClause = (query.joins || [])
+    .map((j) => `${j.type} JOIN ${j.table} ON ${j.on}`)
+    .join(" ");
 
-      sql = `SELECT ${limitClause} ${selectClause} ${fromClause} ${joinClause} ${whereClause} ${groupByClause} ${orderByClause}`;
-      break;
-    }
+  const whereClause =
+    query.filters && query.filters.length > 0
+      ? "WHERE " +
+        query.filters
+          .map((f) => {
+            const val =
+              typeof f.value === "string"
+                ? `'${f.value.replace(/'/g, "''")}'`
+                : f.value;
+            return `${f.field} ${f.op} ${val}`;
+          })
+          .join(" AND ")
+      : "";
+
+  const groupByClause =
+    query.groupBy && query.groupBy.length > 0
+      ? "GROUP BY " + query.groupBy.join(", ")
+      : "";
+
+  const orderByClause =
+    query.orderBy && query.orderBy.length > 0
+      ? "ORDER BY " +
+        query.orderBy
+          .map((o) => `${o.field} ${o.direction || "ASC"}`)
+          .join(", ")
+      : "";
+
+  const limitClause =
+    query.limit && dbType === "mssql"
+      ? `TOP ${query.limit}`
+      : query.limit
+      ? `LIMIT ${query.limit}`
+      : "";
+
+  sql = `SELECT ${limitClause} ${selectClause} ${fromClause} ${joinClause} ${whereClause} ${groupByClause} ${orderByClause}`;
+  break;
+}
+
 
     // ======================================================
     // 🔹 INSERT

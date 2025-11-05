@@ -90,3 +90,24 @@
   color: #00d8ff;
   margin-top: 15px;
 }
+.field-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.delete-field-btn {
+  background: #2a2a2a;
+  border: none;
+  color: #ff6666;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 3px 6px;
+  transition: 0.2s;
+}
+
+.delete-field-btn:hover {
+  background: #ff6666;
+  color: white;
+}
