@@ -1,83 +1,83 @@
-/* 🌌 SQL Builder — улучшенный UI */
+/* 🌌 AI SQL Builder — полное оформление */
 
 /* Контейнер всей панели */
 .sql-builder-panel {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-width: 1100px;
+  max-width: 1200px;
   margin: 40px auto;
-  padding: 30px;
+  padding: 32px;
   border-radius: 16px;
-  background: rgba(17, 17, 17, 0.85);
-  box-shadow: 0 0 25px rgba(0, 183, 255, 0.1);
+  background: linear-gradient(145deg, #0a0f1c, #111c33);
+  box-shadow: 0 0 20px rgba(0, 183, 255, 0.15);
   color: #e5e5e5;
   font-family: "Inter", sans-serif;
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(12px);
+  border: 1px solid #1f2a3d;
 }
 
-/* Заголовок панели */
-.panel-title {
+/* Заголовок */
+.sql-builder-panel h2 {
   font-size: 1.8rem;
   font-weight: 600;
-  margin-bottom: 10px;
   text-align: center;
   color: #00d8ff;
+  margin-bottom: 20px;
+  text-shadow: 0 0 10px rgba(0, 216, 255, 0.4);
 }
 
-/* Сетка из двух колонок */
-.builder-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 30px;
-  align-items: start;
-}
-
-/* Общие блоки ввода */
+/* Группы полей */
 .input-group {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  background: #141414;
-  padding: 14px 16px;
+  padding: 16px;
   border-radius: 10px;
-  border: 1px solid #1f1f1f;
-  transition: all 0.2s ease-in-out;
+  border: 1px solid #1f2a3d;
+  background: rgba(10, 15, 25, 0.8);
+  transition: all 0.25s ease;
 }
 
 .input-group:hover {
-  border-color: #0077b6;
-  box-shadow: 0 0 8px rgba(0, 119, 182, 0.2);
+  border-color: #00b4d8;
+  box-shadow: 0 0 10px rgba(0, 180, 216, 0.25);
 }
 
-/* Заголовки инпутов */
+/* Метки */
 .input-group label {
   font-weight: 500;
-  color: #a0a0a0;
+  color: #00b4d8;
+  font-size: 0.95rem;
 }
 
-/* Поля и селекты */
-.input-group input,
-.input-group select {
-  padding: 10px 12px;
+/* Инпуты и селекты */
+.sql-builder-panel input,
+.sql-builder-panel select {
+  background: #121a2f !important;
+  color: #e6f7ff !important;
+  border: 1px solid #00b4d8 !important;
   border-radius: 8px;
-  border: 1px solid #2c2c2c;
-  background: #1e1e1e;
-  color: #e2e2e2;
+  padding: 10px 12px;
   font-size: 0.95rem;
   outline: none;
+  transition: all 0.2s ease;
 }
 
-.input-group input:focus,
-.input-group select:focus {
-  border-color: #00b4d8;
-  box-shadow: 0 0 4px rgba(0, 180, 216, 0.4);
+.sql-builder-panel input:focus,
+.sql-builder-panel select:focus {
+  border-color: #00d8ff;
+  box-shadow: 0 0 6px rgba(0, 216, 255, 0.3);
 }
 
-/* Кнопки добавления */
+.sql-builder-panel option {
+  background: #0b1220;
+  color: #e5e5e5;
+}
+
+/* Кнопки */
+button,
 .add-btn {
-  align-self: flex-start;
-  margin-top: 8px;
   background: linear-gradient(90deg, #00b4d8, #0077b6);
   color: #fff;
   border: none;
@@ -89,58 +89,26 @@
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+button:hover,
 .add-btn:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 0 12px rgba(0, 180, 216, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(0, 180, 216, 0.4);
 }
 
-/* Транзакции */
-.transaction-box {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 15px;
-  padding: 12px;
-  background: #101010;
-  border-radius: 8px;
-  border: 1px solid #1f1f1f;
+button:disabled {
+  background: #1a2a3d;
+  color: #888;
+  cursor: not-allowed;
 }
 
-.transaction-label {
-  color: #ccc;
-  font-size: 0.95rem;
-}
-
-/* SQL вывод */
-.sql-output {
-  background: #0f0f0f;
-  padding: 20px;
-  border-radius: 10px;
-  overflow-x: auto;
-  font-family: monospace;
-  white-space: pre-wrap;
-  color: #00d8ff;
-  margin-top: 20px;
-  border: 1px solid #1f1f1f;
-  box-shadow: inset 0 0 10px rgba(0, 180, 216, 0.1);
-}
-
-/* Поля с возможностью удаления */
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-
-/* Кнопка удаления поля */
+/* Кнопки удаления */
 .delete-field-btn {
   background: transparent;
   border: 1px solid #ff6666;
   color: #ff6666;
   cursor: pointer;
   border-radius: 6px;
-  padding: 3px 8px;
+  padding: 4px 8px;
   transition: all 0.2s ease-in-out;
 }
 
@@ -150,15 +118,65 @@
   transform: scale(1.05);
 }
 
-/* Результаты / Статусы */
-.status-info {
-  color: #00b4d8;
-  text-align: center;
-  margin-top: 10px;
+/* SQL вывод */
+.sql-output {
+  background: #0f0f0f;
+  padding: 20px;
+  border-radius: 10px;
+  overflow-x: auto;
+  font-family: "JetBrains Mono", monospace;
+  white-space: pre-wrap;
+  color: #00d8ff;
+  border: 1px solid #1f1f1f;
+  box-shadow: inset 0 0 10px rgba(0, 180, 216, 0.1);
+  margin-top: 20px;
 }
 
+/* Кнопки транзакций */
+.transaction-btn {
+  background: #1b283d;
+  border: 1px solid #00b4d8;
+  color: #00d8ff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  transition: 0.25s;
+}
+
+.transaction-btn:hover {
+  background: #00b4d8;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(0, 180, 216, 0.5);
+}
+
+/* Ошибки / статусы */
 .status-error {
-  color: #ff5555;
+  color: #ff4d4d;
   text-align: center;
   margin-top: 10px;
+  font-weight: 500;
+}
+
+.status-success {
+  color: #00e676;
+  text-align: center;
+  margin-top: 10px;
+  font-weight: 500;
+}
+
+/* Отступы для кнопок */
+.flex {
+  display: flex;
+  align-items: center;
+}
+
+.flex.gap-2 {
+  gap: 8px;
+}
+
+.flex.justify-end {
+  justify-content: flex-end;
+}
+
+.flex.justify-between {
+  justify-content: space-between;
 }

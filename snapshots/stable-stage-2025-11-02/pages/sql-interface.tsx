@@ -1,5 +1,5 @@
-import SqlBuilderPanel from "../components/SqlBuilderPanel";
-import DataTable from "../components/DataTable";
+import SqlBuilderPanel from "@/components/SqlBuilderPanel";
+import DataTable from "@/components/DataTable";
 
 export default function SqlInterfacePage() {
   return (

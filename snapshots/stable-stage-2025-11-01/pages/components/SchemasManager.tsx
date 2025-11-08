@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { listSchemas, getSchema, diffSchema, updateSchema, deleteSchema, saveSchema } from '../../lib/api'
+import { listSchemas, getSchema, diffSchema, updateSchema, deleteSchema, saveSchema } from '../@/lib/api'
 
 type Toast = {type:'ok'|'warn'|'err', text:string} | null
 

@@ -12,13 +12,14 @@ echo "🧠 Создаём снапшот: $SNAPSHOT_DIR"
 # Создаём папку
 mkdir -p "$SNAPSHOT_DIR"
 
-# Копируем ключевые директории и файлы
-rsync -a \
-  --exclude 'node_modules' \
-  --exclude '.next' \
-  --exclude '.git' \
-  --exclude 'out' \
-  --exclude 'snapshots' \
-  components lib pages styles supabase package.json tsconfig.json next-env.d.ts README.md "$SNAPSHOT_DIR/"
+# Копируем ключевые директории и файлы (без node_modules, .git, .next и т.д.)
+echo "📦 Копируем файлы и директории..."
+for path in components lib pages styles supabase package.json tsconfig.json next-env.d.ts README.md; do
+  if [ -e "$path" ]; then
+    echo "➡️  Копирую $path..."
+    cp -r "$path" "$SNAPSHOT_DIR/" 2>/dev/null || true
+  fi
+done
 
 echo "✅ Снапшот успешно создан: $SNAPSHOT_DIR"
+echo "💾 Чтобы восстановить: cp -r $SNAPSHOT_DIR/* ./"

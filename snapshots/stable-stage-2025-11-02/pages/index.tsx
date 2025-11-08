@@ -2,9 +2,9 @@ import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import DbConnect from "../components/DbConnect";
+import DbConnect from "@/components/DbConnect";
 import SchemasManager from "./components/SchemasManager";
-import { generateSql, saveSchema } from "../lib/api";
+import { generateSql, saveSchema } from "@/lib/api";
 
 /* -------------------- CONSTANTS -------------------- */
 const DANGER_RE =

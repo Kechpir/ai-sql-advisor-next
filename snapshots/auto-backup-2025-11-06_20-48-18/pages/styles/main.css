@@ -1,0 +1,209 @@
+/* 🎨 ===== AI SQL ADVISOR UI STYLE ===== */
+
+/* ===== GLOBAL ===== */
+body {
+  font-family: 'Inter', sans-serif;
+  background: radial-gradient(circle at top left, #0b1220 0%, #060914 100%);
+  color: #e5e7eb;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* плавные переходы */
+* {
+  transition: all 0.15s ease;
+}
+
+/* ===== HEADER ===== */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.header-logo {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.header-logo img {
+  border-radius: 10px;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.06);
+}
+
+.header-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.header-sub {
+  margin: 0;
+  opacity: 0.75;
+  font-size: 14px;
+}
+
+.signout-btn {
+  background: #0b1220;
+  color: #e5e7eb;
+  border: 1px solid #1f2937;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.signout-btn:hover {
+  background: #111827;
+}
+
+/* ===== SQL INTERFACE LINK ===== */
+.sql-link {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #22d3ee, #3b82f6);
+  color: #0b1220;
+  font-weight: 700;
+  font-size: 16px;
+  text-decoration: none;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.4);
+}
+.sql-link:hover {
+  transform: scale(1.04);
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.7);
+}
+
+/* ===== MAIN CARD ===== */
+.main-card {
+  border: 1px solid #1f2937;
+  border-radius: 16px;
+  background: #0f172a;
+  padding: 24px;
+  max-width: 1000px;
+  margin: 0 auto;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* ===== BUTTONS ===== */
+.btn {
+  border-radius: 12px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.btn-main {
+  background: linear-gradient(90deg, #22d3ee, #3b82f6);
+  color: #0b1220;
+  border: none;
+}
+.btn-main:hover {
+  filter: brightness(1.1);
+  transform: scale(1.03);
+}
+
+.btn-sec {
+  background: #0b1220;
+  color: #e5e7eb;
+  border: 1px solid #1f2937;
+}
+.btn-sec:hover {
+  background: #111827;
+}
+
+.tab-btn {
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid #1f2937;
+  background: #0f172a;
+  color: #e5e7eb;
+  cursor: pointer;
+}
+.tab-btn.active {
+  background: #111827;
+}
+
+/* ===== INPUTS ===== */
+input, textarea {
+  background: #0b1220;
+  color: #e5e7eb;
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  padding: 10px 12px;
+  width: 100%;
+}
+
+textarea {
+  resize: vertical;
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.25);
+}
+
+/* ===== BADGE / LABELS ===== */
+.badge {
+  background: #10b98120;
+  color: #34d399;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  border: 1px solid #10b98150;
+}
+
+/* ===== RESULT / OUTPUT ===== */
+.result-card {
+  border: 1px solid #1f2937;
+  border-radius: 12px;
+  background: #0b1220;
+  padding: 12px;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  color: #e5e7eb;
+  font-weight: 600;
+}
+
+.copy-btn {
+  background: #111827;
+  color: #e5e7eb;
+  border: 1px solid #374151;
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+.copy-btn:hover {
+  background: #1f2937;
+}
+
+/* ===== TOAST ===== */
+.toast {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 50;
+  color: #e5e7eb;
+  padding: 10px 12px;
+  border-radius: 10px;
+}
+.toast.ok {
+  background: #10b98120;
+  border: 1px solid #10b98160;
+}
+.toast.warn {
+  background: #f59e0b20;
+  border: 1px solid #f59e0b60;
+}
+.toast.err {
+  background: #ef444420;
+  border: 1px solid #ef444460;
+}

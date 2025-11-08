@@ -1,170 +1,59 @@
-// /utils/jsonToSql.ts
+export function jsonToSql(query: any): string {
+  if (!query) return "";
 
-interface SqlFilter {
-  field: string;
-  op: string;
-  value: string | number;
-}
+  const { queryType = "SELECT", table, fields = [], filters = [], joins = [], orderBy = [], groupBy = [], limit } = query;
 
-interface SqlOrder {
-  field: string;
-  direction?: "ASC" | "DESC";
-}
+  // Проверка
+  if (!table) return "-- ⚠️ Не выбрана таблица";
 
-interface SqlJoin {
-  type: "INNER" | "LEFT" | "RIGHT" | "FULL";
-  table: string;
-  on: string;
-}
+  // SELECT / DELETE / UPDATE / INSERT
+  switch (queryType.toUpperCase()) {
+    case "SELECT": {
+      const fieldStr = fields.length ? fields.join(", ") : "*";
+      let sql = `SELECT ${fieldStr} FROM ${table}`;
 
-interface SqlQueryJSON {
-  dbType?: string; // postgres | mysql | sqlite | mssql | oracle
-  queryType?: string; // SELECT | INSERT | UPDATE | DELETE
-  table: string;
-  fields: string[];
-  joins?: SqlJoin[];
-  filters?: SqlFilter[];
-  orderBy?: SqlOrder[];
-  groupBy?: string[];
-  limit?: number;
-  aggregate?: boolean;
-  transaction?: boolean;
-}
+      // JOIN
+      if (joins.length) {
+        joins.forEach((j: any) => {
+          sql += ` ${j.type || "INNER"} JOIN ${j.table} ON ${j.leftField} = ${j.rightField}`;
+        });
+      }
 
-/**
- * Конвертация JSON → SQL с учётом типа БД, join, group, limit и агрегатов
- */
-export function jsonToSql(query: SqlQueryJSON): string {
-  if (!query.table) throw new Error("Не указана таблица.");
-  const cmd = (query.queryType || "SELECT").toUpperCase();
-  const dbType = query.dbType?.toLowerCase() || "postgres";
+      // WHERE
+      if (filters.length) {
+        const whereClauses = filters
+          .filter((f: any) => f.field && f.value)
+          .map((f: any) => `${f.field} ${f.op || "="} '${f.value}'`);
+        if (whereClauses.length) sql += " WHERE " + whereClauses.join(" AND ");
+      }
 
-  let sql = "";
+      // GROUP BY
+      if (groupBy.length) sql += " GROUP BY " + groupBy.join(", ");
 
-  // ======================================================
-  // 🔹 SELECT
-  // ======================================================
-  if (cmd === "SELECT") {
-    if (!query.fields?.length) throw new Error("Нет выбранных полей для SELECT.");
+      // ORDER BY
+      if (orderBy.length) {
+        const orderClauses = orderBy
+          .filter((o: any) => o.field)
+          .map((o: any) => `${o.field} ${o.direction || "ASC"}`);
+        sql += " ORDER BY " + orderClauses.join(", ");
+      }
 
-    // Агрегаты
-    let fieldsClause = "";
-    if (query.aggregate) {
-      fieldsClause = query.fields
-        .map((f) => `COALESCE(SUM(${f}), 0) AS ${f}_sum`)
-        .join(", ");
-    } else {
-      fieldsClause = query.fields.join(", ");
+      // LIMIT
+      if (limit) sql += ` LIMIT ${limit}`;
+
+      return sql + ";";
     }
 
-    const fromClause = `FROM ${query.table}`;
+    case "DELETE":
+      return `DELETE FROM ${table};`;
 
-    // JOIN
-    const joinClause = (query.joins || [])
-      .filter((j) => j.table && j.on)
-      .map((j) => `${j.type} JOIN ${j.table} ON ${j.on}`)
-      .join(" ");
+    case "UPDATE":
+      return `UPDATE ${table} SET column=value WHERE condition;`;
 
-    // WHERE
-    const whereClause =
-      query.filters && query.filters.length > 0
-        ? "WHERE " +
-          query.filters
-            .filter((f) => f.field)
-            .map((f) => {
-              const val =
-                typeof f.value === "string"
-                  ? `'${f.value.replace(/'/g, "''")}'`
-                  : f.value;
-              return `${f.field} ${f.op} ${val}`;
-            })
-            .join(" AND ")
-        : "";
+    case "INSERT":
+      return `INSERT INTO ${table} (...) VALUES (...);`;
 
-    // GROUP BY
-    const groupByClause =
-      query.groupBy && query.groupBy.length > 0
-        ? "GROUP BY " + query.groupBy.join(", ")
-        : "";
-
-    // ORDER BY
-    const orderByClause =
-      query.orderBy && query.orderBy.length > 0
-        ? "ORDER BY " +
-          query.orderBy
-            .filter((o) => o.field)
-            .map((o) => `${o.field} ${o.direction || "ASC"}`)
-            .join(", ")
-        : "";
-
-    // LIMIT
-    const limitClause =
-      query.limit && dbType === "mssql"
-        ? `TOP ${query.limit}`
-        : query.limit
-        ? `LIMIT ${query.limit}`
-        : "";
-
-    sql = `SELECT ${limitClause} ${fieldsClause} ${fromClause} ${joinClause} ${whereClause} ${groupByClause} ${orderByClause}`;
+    default:
+      return "-- Неизвестный тип запроса";
   }
-
-  // ======================================================
-  // 🔹 INSERT
-  // ======================================================
-  else if (cmd === "INSERT") {
-    if (!query.fields?.length) throw new Error("Нет данных для вставки (fields).");
-    const cols = Object.keys(query.fields).join(", ");
-    const vals = Object.values(query.fields)
-      .map((v) =>
-        typeof v === "string" ? `'${v.replace(/'/g, "''")}'` : v
-      )
-      .join(", ");
-    sql = `INSERT INTO ${query.table} (${cols}) VALUES (${vals})`;
-  }
-
-  // ======================================================
-  // 🔹 UPDATE
-  // ======================================================
-  else if (cmd === "UPDATE") {
-    if (!query.fields?.length) throw new Error("Нет данных для обновления (fields).");
-    const setClause = query.fields.map((f) => `${f} = ?`).join(", ");
-    const whereClause =
-      query.filters && query.filters.length > 0
-        ? "WHERE " +
-          query.filters.map((f) => `${f.field} ${f.op} ?`).join(" AND ")
-        : "";
-    sql = `UPDATE ${query.table} SET ${setClause} ${whereClause}`;
-  }
-
-  // ======================================================
-  // 🔹 DELETE
-  // ======================================================
-  else if (cmd === "DELETE") {
-    const whereClause =
-      query.filters && query.filters.length > 0
-        ? "WHERE " +
-          query.filters.map((f) => `${f.field} ${f.op} ?`).join(" AND ")
-        : "";
-    sql = `DELETE FROM ${query.table} ${whereClause}`;
-  }
-
-  // ======================================================
-  // 🧱 Диалектные отличия (Postgres / MySQL / MSSQL / Oracle)
-  // ======================================================
-  if (dbType === "mysql") {
-    sql = sql.replace(/ILIKE/g, "LIKE");
-  } else if (dbType === "mssql") {
-    sql = sql.replace(/LIMIT \d+/g, ""); // TOP уже используется
-  } else if (dbType === "oracle") {
-    sql = sql.replace(/LIMIT \d+/g, "FETCH FIRST n ROWS ONLY");
-  }
-
-  // ======================================================
-  // 🔐 Транзакции
-  // ======================================================
-  if (query.transaction) {
-    sql = `BEGIN; ${sql}; COMMIT;`;
-  }
-
-  return sql.trim().replace(/\s+/g, " ");
 }

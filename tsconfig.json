@@ -1,33 +1,35 @@
 {
   "compilerOptions": {
+    /* === Core Options === */
+    "target": "esnext",
     "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": true,
-    "skipLibCheck": true,
-    "strict": false,
-    "noEmit": true,
-    "incremental": true,
-    "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "node",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
     "jsx": "preserve",
+    "noEmit": true,
+    "incremental": true,
+    "allowJs": true,
+
+    /* === TypeScript Strictness === */
+    "strict": false,
+    "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-    "target": "esnext",
-    "baseUrl": "."
+
+    /* === Paths / Aliases === */
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"]
+    },
+
+    /* === Extra === */
+    "resolveJsonModule": true,
+    "types": ["node", "lucide-react"]
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx"
-  ],
-  "exclude": [
-    "node_modules",
-    "snapshots",
-    ".next",
-    "out",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ]
+
+  /* === Includes & Excludes === */
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
+  "exclude": ["node_modules", ".next", "out", "snapshots"]
 }
