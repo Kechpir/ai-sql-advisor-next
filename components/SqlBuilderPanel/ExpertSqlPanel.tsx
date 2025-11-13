@@ -38,6 +38,7 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
   const [dateLogic, setDateLogic] = useState<DateLogic[]>([]);
   const [queryHints, setQueryHints] = useState<QueryHint[]>([]);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 50 });
+  const [showSql, setShowSql] = useState(false);
 
   const updateParent = () => {
     onChange({
@@ -51,14 +52,16 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
   };
 
   return (
-    <div className="sql-builder-panel mt-10">
-      <h2 className="panel-title text-purple-400">⚙️ Expert SQL Tools</h2>
+    <div className="sql-builder-panel rounded-2xl p-5 bg-zinc-900/80 shadow-lg border border-zinc-800 mt-8">
+      <h2 className="panel-title text-xl font-semibold text-purple-400 mb-3">
+        ⚙️ Expert SQL Tools
+      </h2>
 
       {/* WINDOW FUNCTIONS */}
-      <div className="input-group">
+      <div className="input-group mb-4">
         <label>🪟 Window Functions (RANK, ROW_NUMBER...)</label>
         {windowFunctions.map((w, i) => (
-          <div key={i} className="field-row">
+          <div key={i} className="flex flex-wrap gap-2 mb-2">
             <select
               value={w.function}
               onChange={(e) => {
@@ -67,12 +70,13 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setWindowFunctions(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             >
-              <option>ROW_NUMBER</option>
-              <option>RANK</option>
-              <option>DENSE_RANK</option>
-              <option>NTILE</option>
+              {["ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE"].map((fn) => (
+                <option key={fn}>{fn}</option>
+              ))}
             </select>
+
             <select
               value={w.field}
               onChange={(e) => {
@@ -81,14 +85,14 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setWindowFunctions(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             >
               <option value="">— поле —</option>
               {schema?.[selectedTable]?.map((col: string) => (
-                <option key={col} value={col}>
-                  {col}
-                </option>
+                <option key={col}>{col}</option>
               ))}
             </select>
+
             <input
               placeholder="PARTITION BY ..."
               value={w.partitionBy}
@@ -98,7 +102,9 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setWindowFunctions(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex-1"
             />
+
             <input
               placeholder="ORDER BY ..."
               value={w.orderBy}
@@ -108,7 +114,9 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setWindowFunctions(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex-1"
             />
+
             <button
               className="delete-field-btn"
               onClick={() => {
@@ -128,16 +136,17 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
               { function: "ROW_NUMBER", field: "", partitionBy: "", orderBy: "" },
             ])
           }
+          className="add-btn text-sm px-3 py-1.5"
         >
           ➕ Добавить Window
         </Button>
       </div>
 
       {/* SUBQUERIES */}
-      <div className="input-group">
-        <label>🌀 Подзапросы (Subqueries):</label>
+      <div className="input-group mb-4">
+        <label>🌀 Подзапросы (Subqueries)</label>
         {subqueries.map((s, i) => (
-          <div key={i} className="field-row">
+          <div key={i} className="flex flex-col gap-2 mb-2">
             <input
               placeholder="Алиас"
               value={s.alias}
@@ -147,6 +156,7 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setSubqueries(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             />
             <textarea
               placeholder="SELECT ... FROM ..."
@@ -157,10 +167,10 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setSubqueries(updated);
                 updateParent();
               }}
-              style={{ width: "100%", minHeight: "60px" }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 min-h-[60px]"
             />
             <button
-              className="delete-field-btn"
+              className="delete-field-btn self-end"
               onClick={() => {
                 const updated = subqueries.filter((_, idx) => idx !== i);
                 setSubqueries(updated);
@@ -172,19 +182,18 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
           </div>
         ))}
         <Button
-          onClick={() =>
-            setSubqueries([...subqueries, { alias: "", query: "" }])
-          }
+          onClick={() => setSubqueries([...subqueries, { alias: "", query: "" }])}
+          className="add-btn text-sm px-3 py-1.5"
         >
           ➕ Добавить Subquery
         </Button>
       </div>
 
       {/* JSON OPERATIONS */}
-      <div className="input-group">
-        <label>📦 JSON Операции:</label>
+      <div className="input-group mb-4">
+        <label>📦 JSON Операции</label>
         {jsonOps.map((j, i) => (
-          <div key={i} className="field-row">
+          <div key={i} className="flex flex-wrap gap-2 mb-2">
             <select
               value={j.field}
               onChange={(e) => {
@@ -193,14 +202,14 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setJsonOps(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             >
               <option value="">— JSON поле —</option>
               {schema?.[selectedTable]?.map((col: string) => (
-                <option key={col} value={col}>
-                  {col}
-                </option>
+                <option key={col}>{col}</option>
               ))}
             </select>
+
             <select
               value={j.operator}
               onChange={(e) => {
@@ -209,14 +218,15 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setJsonOps(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             >
-              <option value=">=">&gt;=</option>
-              <option value="<=">&lt;=</option>
-
-              <option>JSON_EXTRACT</option>
+              {["->", "->>", "JSON_EXTRACT"].map((op) => (
+                <option key={op}>{op}</option>
+              ))}
             </select>
+
             <input
-              placeholder="путь (например, name->>'first')"
+              placeholder="путь (name->>'first')"
               value={j.path}
               onChange={(e) => {
                 const updated = [...jsonOps];
@@ -224,7 +234,9 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setJsonOps(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex-1"
             />
+
             <input
               placeholder="алиас"
               value={j.alias}
@@ -234,7 +246,9 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setJsonOps(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex-1"
             />
+
             <button
               className="delete-field-btn"
               onClick={() => {
@@ -251,16 +265,17 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
           onClick={() =>
             setJsonOps([...jsonOps, { field: "", operator: "->", path: "", alias: "" }])
           }
+          className="add-btn text-sm px-3 py-1.5"
         >
           ➕ Добавить JSON-операцию
         </Button>
       </div>
 
       {/* DATE LOGIC */}
-      <div className="input-group">
-        <label>📅 Дата / Интервалы:</label>
+      <div className="input-group mb-4">
+        <label>📅 Дата / Интервалы</label>
         {dateLogic.map((d, i) => (
-          <div key={i} className="field-row">
+          <div key={i} className="flex flex-wrap gap-2 mb-2">
             <select
               value={d.field}
               onChange={(e) => {
@@ -269,14 +284,14 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setDateLogic(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             >
               <option value="">— поле —</option>
               {schema?.[selectedTable]?.map((col: string) => (
-                <option key={col} value={col}>
-                  {col}
-                </option>
+                <option key={col}>{col}</option>
               ))}
             </select>
+
             <select
               value={d.condition}
               onChange={(e) => {
@@ -285,13 +300,15 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setDateLogic(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             >
-              <option>BETWEEN</option>
-              <option>&gt;=</option>
-              <option>&lt;=</option>
+              {["BETWEEN", ">=", "<="].map((op) => (
+                <option key={op}>{op}</option>
+              ))}
             </select>
+
             <input
-              placeholder="например NOW() - INTERVAL '7 days'"
+              placeholder="NOW() - INTERVAL '7 days'"
               value={d.value}
               onChange={(e) => {
                 const updated = [...dateLogic];
@@ -299,7 +316,9 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setDateLogic(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex-1"
             />
+
             <button
               className="delete-field-btn"
               onClick={() => {
@@ -316,16 +335,17 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
           onClick={() =>
             setDateLogic([...dateLogic, { field: "", condition: "BETWEEN", value: "" }])
           }
+          className="add-btn text-sm px-3 py-1.5"
         >
-          ➕ Добавить условие по дате
+          ➕ Добавить условие
         </Button>
       </div>
 
       {/* QUERY HINTS */}
-      <div className="input-group">
-        <label>💡 Query Hints (подсказки для оптимизатора):</label>
+      <div className="input-group mb-4">
+        <label>💡 Query Hints</label>
         {queryHints.map((h, i) => (
-          <div key={i} className="field-row">
+          <div key={i} className="flex gap-2 mb-1 flex-wrap">
             <select
               value={h.engine}
               onChange={(e) => {
@@ -334,14 +354,14 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setQueryHints(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2"
             >
-              <option>PostgreSQL</option>
-              <option>MySQL</option>
-              <option>Oracle</option>
-              <option>SQL Server</option>
+              {["PostgreSQL", "MySQL", "Oracle", "SQL Server"].map((db) => (
+                <option key={db}>{db}</option>
+              ))}
             </select>
             <input
-              placeholder="пример: /*+ INDEX(table idx_customer_name) */"
+              placeholder="/*+ INDEX(table idx_name) */"
               value={h.hint}
               onChange={(e) => {
                 const updated = [...queryHints];
@@ -349,6 +369,7 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
                 setQueryHints(updated);
                 updateParent();
               }}
+              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 flex-1"
             />
             <button
               className="delete-field-btn"
@@ -366,14 +387,15 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
           onClick={() =>
             setQueryHints([...queryHints, { engine: "PostgreSQL", hint: "" }])
           }
+          className="add-btn text-sm px-3 py-1.5"
         >
           ➕ Добавить Hint
         </Button>
       </div>
 
       {/* PAGINATION */}
-      <div className="input-group flex gap-4 items-center justify-between">
-        <label>📄 Пагинация:</label>
+      <div className="input-group flex gap-4 items-center justify-between border-t border-zinc-800 pt-4">
+        <label>📄 Пагинация</label>
         <div>
           <Button
             disabled={pagination.page <= 1}
@@ -382,18 +404,18 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
               setPagination({ ...pagination, page: newPage });
               updateParent();
             }}
+            className="text-sm px-3 py-1"
           >
             ◀ Prev
           </Button>
-          <span className="mx-3 text-cyan-400">
-            Страница {pagination.page}
-          </span>
+          <span className="mx-3 text-cyan-400">Стр. {pagination.page}</span>
           <Button
             onClick={() => {
               const newPage = pagination.page + 1;
               setPagination({ ...pagination, page: newPage });
               updateParent();
             }}
+            className="text-sm px-3 py-1"
           >
             Next ▶
           </Button>
@@ -405,10 +427,27 @@ export default function ExpertSqlPanel({ schema, selectedTable, onChange }: any)
             setPagination({ ...pagination, pageSize: Number(e.target.value) });
             updateParent();
           }}
-          style={{ width: "80px" }}
+          className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-2 w-[80px]"
           placeholder="page size"
         />
       </div>
+
+      {/* SQL PREVIEW */}
+      <div className="flex justify-end mt-3">
+        <Button
+          onClick={() => setShowSql(!showSql)}
+          variant="ghost"
+          className="text-sm text-cyan-400 hover:text-cyan-300"
+        >
+          {showSql ? "Скрыть SQL" : "Показать SQL"}
+        </Button>
+      </div>
+
+      {showSql && (
+        <div className="sql-output bg-zinc-950 border border-zinc-800 rounded-xl p-3 mt-3 text-xs text-gray-300 font-mono overflow-x-auto">
+          Здесь появится SQL для Expert уровня.
+        </div>
+      )}
     </div>
   );
 }

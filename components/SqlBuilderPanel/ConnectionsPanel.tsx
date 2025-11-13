@@ -7,17 +7,23 @@ interface Connection {
 
 interface Props {
   onSelect: (url: string) => void;
+  onRefreshSchema?: () => void;
+  loading?: boolean;
 }
 
 const STORAGE_KEY = "savedConnections";
 
-export default function ConnectionsPanel({ onSelect }: Props) {
+export default function ConnectionsPanel({
+  onSelect,
+  onRefreshSchema,
+  loading,
+}: Props) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selected, setSelected] = useState("");
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
 
-  // 🧠 Загрузка сохранённых подключений из localStorage
+  // Загрузка подключений из localStorage
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
@@ -30,61 +36,57 @@ export default function ConnectionsPanel({ onSelect }: Props) {
     }
   }, []);
 
-  // 💾 Сохранить все подключения
+  // Сохранение подключений
   const saveConnections = (list: Connection[]) => {
     setConnections(list);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
   };
 
-  // ➕ Добавить новое подключение
+  // Добавление нового подключения
   const handleAdd = () => {
     if (!name.trim() || !url.trim()) {
       alert("Введите имя и URL!");
       return;
     }
-
     if (connections.some((c) => c.name === name.trim())) {
       alert("Такое подключение уже существует!");
       return;
     }
-
     const updated = [...connections, { name: name.trim(), url: url.trim() }];
     saveConnections(updated);
     setName("");
     setUrl("");
   };
 
-  // 🗑 Удалить подключение
+  // Удаление подключения
   const handleDelete = (target: string) => {
     const updated = connections.filter((c) => c.name !== target);
     saveConnections(updated);
     if (selected === target) {
       setSelected("");
-      onSelect(""); // ⚠️ сброс подключения
+      onSelect("");
     }
   };
 
-  // 🔄 Выбор подключения
-  const handleSelect = (name: string) => {
-    setSelected(name);
-    const found = connections.find((c) => c.name === name);
+  // Подключение
+  const handleConnect = () => {
+    const found = connections.find((c) => c.name === selected);
     if (found) {
-      onSelect(found.url); // ⚡ передаём строку подключения вверх
+      onSelect(found.url);
+    } else {
+      alert("Выберите подключение!");
     }
   };
 
   return (
-    <div className="input-group" style={{ marginBottom: "20px" }}>
-      <label className="text-cyan-300 font-semibold text-sm mb-1">
-        🗂 Подключения к БД
-      </label>
+    <div className="connections-panel unified">
+      <h3>🔗 Подключение к базе данных</h3>
 
-      {/* Выбор подключения */}
-      <div className="flex gap-2 mb-2">
+      {/* Список подключений */}
+      <div className="input-row">
         <select
-          className="flex-1 p-2 rounded bg-[#101a33] border border-[#233861] text-sm text-gray-200"
           value={selected}
-          onChange={(e) => handleSelect(e.target.value)}
+          onChange={(e) => setSelected(e.target.value)}
         >
           <option value="">— выберите подключение —</option>
           {connections.length > 0 ? (
@@ -101,7 +103,7 @@ export default function ConnectionsPanel({ onSelect }: Props) {
         {selected && (
           <button
             onClick={() => handleDelete(selected)}
-            className="delete-field-btn"
+            className="delete-btn"
             title="Удалить подключение"
           >
             ✖
@@ -110,29 +112,42 @@ export default function ConnectionsPanel({ onSelect }: Props) {
       </div>
 
       {/* Добавление нового подключения */}
-      <input
-        type="text"
-        placeholder="Название подключения (например: NeonProd)"
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        className="p-2 rounded bg-[#101a33] border border-[#233861] text-sm text-gray-200 mb-2"
-      />
+      <div className="input-row">
+        <input
+          type="text"
+          placeholder="Название подключения"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+        />
+      </div>
 
-      <input
-        type="text"
-        placeholder="postgresql://user:password@host/db"
-        value={url}
-        onChange={(e) => setUrl(e.target.value)}
-        className="p-2 rounded bg-[#101a33] border border-[#233861] text-sm text-gray-200 mb-3"
-      />
+      <div className="input-row">
+        <input
+          type="text"
+          placeholder="postgresql://user:password@host/db"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+        />
+      </div>
 
-      <button
-        onClick={handleAdd}
-        className="add-btn self-start"
-        title="Сохранить подключение"
-      >
-        💾 Сохранить
-      </button>
+      {/* Кнопки действий */}
+      <div className="flex-between">
+        <button onClick={handleAdd} className="action-btn save">
+          💾 Сохранить
+        </button>
+        <button onClick={handleConnect} className="action-btn connect">
+          🔌 Подключиться
+        </button>
+        {onRefreshSchema && (
+          <button
+            onClick={onRefreshSchema}
+            disabled={loading}
+            className="action-btn refresh"
+          >
+            🔄 {loading ? "Обновление..." : "Обновить схему"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

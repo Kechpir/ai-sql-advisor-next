@@ -1,4 +1,6 @@
 import type { AppProps } from "next/app";
+import "@/styles/sql-interface.css";
+
 
 // ✅ Подключаем глобальные стили (всё, что относится к UI)
 import "@/styles/globals.css";
