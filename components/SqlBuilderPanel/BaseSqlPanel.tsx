@@ -195,7 +195,7 @@ export default function BaseSqlPanel({
       <div
         className="flex justify-between items-center mt-4"
         style={{
-          gap: "12px",
+          gap: "5px",
           flexWrap: "wrap",
         }}
       >

@@ -248,11 +248,7 @@ body.scale-50 .interface-wrapper {
   margin-left: 8px;
 }
 
-.input-group input[type="checkbox"]:hover,
-.distinct-checkbox:hover {
-  transform: scale(0.15);
-  box-shadow: 0 0 6px rgba(0, 216, 255, 0.4);
-}
+
 
 /* ===== Крестики (удаление полей) ===== */
 .delete-field-btn {
@@ -295,4 +291,22 @@ body.scale-50 .interface-wrapper {
   background: linear-gradient(90deg, #48cae4, #00b4d8) !important;
   transform: translateY(-1px);
   box-shadow: 0 0 10px rgba(0, 216, 255, 0.3);
+}
+
+/* ✅ DISTINCT Checkbox — без скачков при наведении */
+.distinct-checkbox {
+  width: 18px !important;
+  height: 18px !important;
+  accent-color: #00d8ff !important;
+  border: 2px solid #00d8ff !important;
+  border-radius: 4px !important;
+  background-color: rgba(15, 23, 42, 0.9) !important;
+  cursor: pointer !important;
+  transition: box-shadow 0.2s ease-in-out, border-color 0.2s ease-in-out !important;
+  vertical-align: middle !important;
+}
+
+.distinct-checkbox:hover {
+  border-color: #33eaff !important;
+  box-shadow: 0 0 6px rgba(0, 216, 255, 0.6);
 }

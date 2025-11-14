@@ -57,18 +57,22 @@ export default function AdvancedSqlPanel({
       </h2>
 
       {/* DISTINCT */}
-<div className="distinct-box mb-3">
-  <label htmlFor="distinct">DISTINCT</label>
-  <input
-    id="distinct"
-    type="checkbox"
-    checked={distinct}
-    onChange={(e) => {
-      setDistinct(e.target.checked);
-      updateParent();
-    }}
-  />
+<div className="input-group flex items-center gap-2 mb-3">
+  <label className="flex items-center gap-2 cursor-pointer text-[0.9rem] text-gray-200">
+    <input
+      type="checkbox"
+      className="distinct-checkbox align-middle"
+      checked={distinct}
+      onChange={(e) => {
+        setDistinct(e.target.checked);
+        updateParent();
+      }}
+    />
+    DISTINCT
+  </label>
 </div>
+
+
 
 
       {/* GROUP BY */}
@@ -390,16 +394,14 @@ export default function AdvancedSqlPanel({
         </Button>
       </div>
 
-      {/* Bottom actions */}
-      <div className="flex justify-end items-center border-t border-zinc-800 pt-3">
-        <Button
-          onClick={() => setShowSql(!showSql)}
-          variant="ghost"
-          className="text-sm text-cyan-400 hover:text-cyan-300"
-        >
-          {showSql ? "Скрыть SQL" : "Показать SQL"}
-        </Button>
-      </div>
+      <Button
+  onClick={() => setShowSql(!showSql)}
+  variant="ghost"
+  className="add-btn show-sql !bg-gradient-to-r !from-[#0077b6] !to-[#00b4d8] text-white font-medium shadow-md hover:shadow-lg hover:brightness-110 transition-all"
+>
+  {showSql ? "Скрыть SQL" : "Показать SQL"}
+</Button>
+
 
       {showSql && (
         <div className="sql-output bg-zinc-950 border border-zinc-800 rounded-xl p-3 mt-3 text-xs text-gray-300 font-mono overflow-x-auto">
