@@ -1,0 +1,63 @@
+:root {
+  --bg: #0e1118;
+  --panel: #151821;
+  --accent: #00b3ff;
+  --danger: #ff3333;
+  --border: #222633;
+  --radius: 10px;
+  --padding: 0.75rem;
+  --transition: 0.2s ease;
+}
+
+/* ======= Общие панели ======= */
+.sql-panel {
+  background: var(--panel);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  padding: var(--padding);
+  margin-bottom: 1rem;
+  transition: var(--transition);
+}
+
+.sql-panel h3 {
+  color: var(--accent);
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+}
+
+/* ======= Общие поля ======= */
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.sql-label {
+  color: #a1a1b5;
+  font-size: 0.85rem;
+}
+
+.sql-input {
+  background: #10131b;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  color: white;
+}
+
+/* ======= Кнопки ======= */
+.sql-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.sql-btn:hover {
+  background: #00d8ff;
+}

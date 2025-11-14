@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Button } from "../ui/button";
+import PanelWrapper from "@/components/ui/PanelWrapper";
 
 interface AggregateField {
   function: string;
@@ -51,29 +52,22 @@ export default function AdvancedSqlPanel({
   };
 
   return (
-    <div className="sql-builder-panel rounded-2xl p-5 bg-zinc-900/80 shadow-lg border border-zinc-800 mt-8">
-      <h2 className="panel-title text-xl font-semibold text-cyan-400 mb-3">
-        🧩 Расширенные SQL-компоненты
-      </h2>
-
+    <PanelWrapper title="🧩 Расширенные SQL-компоненты">
       {/* DISTINCT */}
-<div className="input-group flex items-center gap-2 mb-3">
-  <label className="flex items-center gap-2 cursor-pointer text-[0.9rem] text-gray-200">
-    <input
-      type="checkbox"
-      className="distinct-checkbox align-middle"
-      checked={distinct}
-      onChange={(e) => {
-        setDistinct(e.target.checked);
-        updateParent();
-      }}
-    />
-    DISTINCT
-  </label>
-</div>
-
-
-
+      <div className="input-group flex items-center gap-3 mb-3">
+        <label className="flex items-center gap-2 cursor-pointer text-[0.9rem] text-gray-200">
+          <input
+            type="checkbox"
+            className="distinct-checkbox accent-cyan-400"
+            checked={distinct}
+            onChange={(e) => {
+              setDistinct(e.target.checked);
+              updateParent();
+            }}
+          />
+          DISTINCT
+        </label>
+      </div>
 
       {/* GROUP BY */}
       <div className="input-group mb-4">
@@ -394,20 +388,22 @@ export default function AdvancedSqlPanel({
         </Button>
       </div>
 
-      <Button
-  onClick={() => setShowSql(!showSql)}
-  variant="ghost"
-  className="add-btn show-sql !bg-gradient-to-r !from-[#0077b6] !to-[#00b4d8] text-white font-medium shadow-md hover:shadow-lg hover:brightness-110 transition-all"
->
-  {showSql ? "Скрыть SQL" : "Показать SQL"}
-</Button>
-
+      {/* SHOW SQL */}
+      <div className="flex justify-end border-t border-zinc-800 pt-3">
+        <Button
+          onClick={() => setShowSql(!showSql)}
+          variant="ghost"
+          className="add-btn show-sql !bg-gradient-to-r !from-[#0077b6] !to-[#00b4d8] text-white font-medium shadow-md hover:shadow-lg hover:brightness-110 transition-all"
+        >
+          {showSql ? "Скрыть SQL" : "Показать SQL"}
+        </Button>
+      </div>
 
       {showSql && (
         <div className="sql-output bg-zinc-950 border border-zinc-800 rounded-xl p-3 mt-3 text-xs text-gray-300 font-mono overflow-x-auto">
           Здесь появится SQL для Advanced уровня.
         </div>
       )}
-    </div>
+    </PanelWrapper>
   );
 }
