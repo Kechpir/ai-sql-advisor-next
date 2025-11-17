@@ -5,6 +5,8 @@ import Link from "next/link";
 import DbConnect from "@/components/DbConnect";
 import SchemasManager from "./components/SchemasManager";
 import { generateSql, saveSchema } from "@/lib/api";
+import { SqlBuilderProvider } from "@/components/SqlBuilderPanel/SqlBuilderContext";
+import SqlBuilderPanel from "@/components/SqlBuilderPanel/SqlBuilderPanel";
 
 /* -------------------- CONSTANTS -------------------- */
 const DANGER_RE =
@@ -35,7 +37,7 @@ async function copy(text: string) {
 /* -------------------- COMPONENT -------------------- */
 export default function Home() {
   const router = useRouter();
-  const [tab, setTab] = useState<"scan" | "saved">("scan");
+  const [tab, setTab] = useState<"scan" | "saved" | "builder">("scan");
   const [schemaJson, setSchemaJson] = useState<any | null>(null);
   const [nl, setNl] = useState("");
   const [generatedSql, setGeneratedSql] = useState<string | null>(null);
@@ -165,154 +167,130 @@ export default function Home() {
 
       {/* ---- MAIN ---- */}
       <div style={{ marginTop: -10 }}>
-        {/* кнопка перехода */}
-        <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 30px" }}>
-          <Link
-            href="/sql-interface"
-            style={{
-              display: "inline-block",
-              padding: "12px 26px",
-              borderRadius: 14,
-              textDecoration: "none",
-              background: "linear-gradient(90deg,#22d3ee,#3b82f6)",
-              color: "#0b1220",
-              fontWeight: 700,
-              fontSize: 16,
-              boxShadow: "0 0 14px rgba(59,130,246,0.45)",
-              transition: "transform 0.2s ease, box-shadow 0.25s ease",
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.transform = "scale(1.05)";
-              e.currentTarget.style.boxShadow = "0 0 20px rgba(59,130,246,0.7)";
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.transform = "scale(1)";
-              e.currentTarget.style.boxShadow = "0 0 14px rgba(59,130,246,0.45)";
-            }}
-          >
-            🚀 Перейти в SQL интерфейс
-          </Link>
+        {/* кнопки вкладок */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+          <button onClick={() => setTab("scan")} style={tabBtn(tab === "scan")}>
+            🔎 Сканировать
+          </button>
+          <button onClick={() => setTab("saved")} style={tabBtn(tab === "saved")}>
+            💾 Сохранённые базы
+          </button>
+          <button onClick={() => setTab("builder")} style={tabBtn(tab === "builder")}>
+            🧩 SQL Builder (новый)
+          </button>
         </div>
 
-        {/* основной блок */}
-        <div
-          style={{
-            border: "1px solid #1f2937",
-            borderRadius: 16,
-            background: "#0f172a",
-            padding: 26,
-          }}
-        >
-          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            <button onClick={() => setTab("scan")} style={tabBtn(tab === "scan")}>
-              🔎 Сканировать
-            </button>
-            <button onClick={() => setTab("saved")} style={tabBtn(tab === "saved")}>
-              💾 Сохранённые базы
-            </button>
-          </div>
+        {/* ---- SCAN ---- */}
+        {tab === "scan" && (
+          <div style={card}>
+            <h3>Подключение и загрузка схемы</h3>
+            <DbConnect onLoaded={setSchemaJson} onToast={toast} />
 
-          {tab === "scan" && (
-            <div>
-              <h3>Подключение и загрузка схемы</h3>
-              <DbConnect onLoaded={setSchemaJson} onToast={toast} />
+            {schemaJson && (
+              <>
+                <div style={{ marginTop: 12 }}>
+                  <span style={badge}>
+                    Схема загружена • таблиц:{" "}
+                    {schemaJson.countTables ?? Object.keys(schemaJson.tables || {}).length}
+                  </span>
+                </div>
+                <details style={{ marginTop: 10 }}>
+                  <summary>Показать JSON-схему</summary>
+                  <pre style={pre}>{JSON.stringify(schemaJson, null, 2)}</pre>
+                </details>
 
-              {schemaJson && (
-                <>
-                  <div style={{ marginTop: 12 }}>
-                    <span style={badge}>
-                      Схема загружена • таблиц:{" "}
-                      {schemaJson.countTables ?? Object.keys(schemaJson.tables || {}).length}
-                    </span>
+                <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+                  <input
+                    placeholder="например: neon_demo"
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                    style={input}
+                  />
+                  <button onClick={onSave} style={btnMain}>
+                    💾 Сохранить
+                  </button>
+                </div>
+              </>
+            )}
+
+            <hr style={{ borderColor: "#1f2937", margin: "20px 0" }} />
+
+            <h3>Генерация SQL</h3>
+            <textarea
+              placeholder="Например: 'Покажи имена и email клиентов...'"
+              value={nl}
+              onChange={(e) => setNl(e.target.value)}
+              rows={5}
+              style={input}
+            />
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                marginTop: 10,
+                fontSize: 14,
+                opacity: 0.9,
+              }}
+            >
+              <input
+                id="explain"
+                type="checkbox"
+                checked={explain}
+                onChange={(e) => setExplain(e.target.checked)}
+              />
+              <label htmlFor="explain">Пояснить SQL</label>
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+              <button onClick={onGenerate} disabled={loading} style={btnMain}>
+                {loading ? "⏳ Генерируем…" : "Сгенерировать"}
+              </button>
+              <button
+                onClick={() => {
+                  setGeneratedSql(null);
+                  setDanger(false);
+                  setSavepointSql(null);
+                  setNl("");
+                }}
+                style={btnSec}
+              >
+                Очистить
+              </button>
+            </div>
+
+            {generatedSql && (
+              <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                {danger && (
+                  <div style={dangerBox}>
+                    ⚠️ Потенциально опасный запрос — проверьте перед выполнением.
                   </div>
-                  <details style={{ marginTop: 10 }}>
-                    <summary>Показать JSON-схему</summary>
-                    <pre style={pre}>{JSON.stringify(schemaJson, null, 2)}</pre>
-                  </details>
+                )}
 
-                  <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
-                    <input
-                      placeholder="например: neon_demo"
-                      value={saveName}
-                      onChange={(e) => setSaveName(e.target.value)}
-                      style={input}
-                    />
-                    <button onClick={onSave} style={btnMain}>
-                      💾 Сохранить
+                <div style={resultCard}>
+                  <div style={resultHdr}>
+                    <span>Обычный вариант</span>
+                    <button
+                      onClick={async () =>
+                        (await copy(plainSql))
+                          ? toast("ok", "Скопировано")
+                          : toast("err", "Ошибка копирования")
+                      }
+                      style={copyBtn}
+                    >
+                      Скопировать
                     </button>
                   </div>
-                </>
-              )}
+                  <pre style={pre}>{plainSql}</pre>
+                </div>
 
-              <hr style={{ borderColor: "#1f2937", margin: "20px 0" }} />
-
-              <h3>Генерация SQL</h3>
-              <textarea
-                placeholder="Например: 'Покажи имена и email клиентов...'"
-                value={nl}
-                onChange={(e) => setNl(e.target.value)}
-                rows={5}
-                style={input}
-              />
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginTop: 10,
-                  fontSize: 14,
-                  opacity: 0.9,
-                }}
-              >
-                <input
-                  id="explain"
-                  type="checkbox"
-                  checked={explain}
-                  onChange={(e) => setExplain(e.target.checked)}
-                />
-                <label htmlFor="explain">Пояснить SQL</label>
-              </div>
-
-              <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button onClick={onGenerate} disabled={loading} style={btnMain}>
-                  {loading ? "⏳ Генерируем…" : "Сгенерировать"}
-                </button>
-                <button
-                  onClick={() => {
-                    setGeneratedSql(null);
-                    setDanger(false);
-                    setSavepointSql(null);
-                    setNl("");
-                  }}
-                  style={btnSec}
-                >
-                  Очистить
-                </button>
-              </div>
-
-              {generatedSql && (
-                <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-                  {danger && (
-                    <div
-                      style={{
-                        border: "1px solid #ef444460",
-                        background: "#ef444420",
-                        color: "#fecaca",
-                        borderRadius: 12,
-                        padding: "10px 12px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      ⚠️ Потенциально опасный запрос — проверьте перед выполнением.
-                    </div>
-                  )}
-
+                {savepointSql && (
                   <div style={resultCard}>
                     <div style={resultHdr}>
-                      <span>Обычный вариант</span>
+                      <span>Вариант с SAVEPOINT</span>
                       <button
                         onClick={async () =>
-                          (await copy(plainSql))
+                          (await copy(savepointSql))
                             ? toast("ok", "Скопировано")
                             : toast("err", "Ошибка копирования")
                         }
@@ -321,60 +299,34 @@ export default function Home() {
                         Скопировать
                       </button>
                     </div>
-                    <pre style={pre}>{plainSql}</pre>
+                    <pre style={pre}>{savepointSql}</pre>
                   </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
-                  {savepointSql && (
-                    <div style={resultCard}>
-                      <div style={resultHdr}>
-                        <span>Вариант с SAVEPOINT</span>
-                        <button
-                          onClick={async () =>
-                            (await copy(savepointSql))
-                              ? toast("ok", "Скопировано")
-                              : toast("err", "Ошибка копирования")
-                          }
-                          style={copyBtn}
-                        >
-                          Скопировать
-                        </button>
-                      </div>
-                      <pre style={pre}>{savepointSql}</pre>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {tab === "saved" && (
+        {/* ---- SAVED ---- */}
+        {tab === "saved" && (
+          <div style={card}>
             <SchemasManager schemaJson={schemaJson} setSchemaJson={setSchemaJson} />
-          )}
-        </div>
+          </div>
+        )}
+
+        {/* ---- BUILDER ---- */}
+        {tab === "builder" && (
+          <div style={card}>
+            <SqlBuilderProvider>
+              <SqlBuilderPanel />
+            </SqlBuilderProvider>
+          </div>
+        )}
       </div>
 
       {/* ---- TOAST ---- */}
       {note && (
-        <div
-          style={{
-            position: "fixed",
-            right: 16,
-            bottom: 16,
-            zIndex: 50,
-            background:
-              note.type === "ok"
-                ? "#10b98120"
-                : note.type === "warn"
-                ? "#f59e0b20"
-                : "#ef444420",
-            border: `1px solid ${
-              note.type === "ok" ? "#10b98160" : note.type === "warn" ? "#f59e0b60" : "#ef444460"
-            }`,
-            color: "#e5e7eb",
-            padding: "10px 12px",
-            borderRadius: 10,
-          }}
-        >
+        <div style={toastStyle(note.type)}>
           {note.text}
         </div>
       )}
@@ -454,3 +406,31 @@ const copyBtn = {
   padding: "6px 10px",
   cursor: "pointer",
 };
+const dangerBox = {
+  border: "1px solid #ef444460",
+  background: "#ef444420",
+  color: "#fecaca",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontWeight: 600,
+};
+const card = {
+  border: "1px solid #1f2937",
+  borderRadius: 16,
+  background: "#0f172a",
+  padding: 26,
+};
+const toastStyle = (type: "ok" | "warn" | "err") => ({
+  position: "fixed" as const,
+  right: 16,
+  bottom: 16,
+  zIndex: 50,
+  background:
+    type === "ok" ? "#10b98120" : type === "warn" ? "#f59e0b20" : "#ef444420",
+  border: `1px solid ${
+    type === "ok" ? "#10b98160" : type === "warn" ? "#f59e0b60" : "#ef444460"
+  }`,
+  color: "#e5e7eb",
+  padding: "10px 12px",
+  borderRadius: 10,
+});

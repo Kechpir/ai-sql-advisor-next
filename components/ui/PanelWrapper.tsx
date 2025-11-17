@@ -1,26 +1,19 @@
 import React from "react";
 
-interface PanelWrapperProps {
+interface Props {
   title?: string;
   children: React.ReactNode;
-  className?: string;
 }
 
-/**
- * Единая визуальная обертка для всех SQL панелей
- * Использует базовые стили из /styles/ui.css
- */
-export const PanelWrapper: React.FC<PanelWrapperProps> = ({
-  title,
-  children,
-  className = "",
-}) => {
+export function PanelWrapper({ title, children }: Props) {
   return (
-    <div className={`sql-panel ${className}`}>
-      {title && <h3 className="text-accent text-lg font-semibold mb-3">{title}</h3>}
-      <div className="space-y-3">{children}</div>
+    <div className="bg-[#0f172a] border border-[#1e293b] rounded-xl p-5 mb-6 shadow-md shadow-black/20">
+      {title && (
+        <h2 className="text-lg font-semibold mb-4 text-cyan-300 flex items-center gap-2">
+          {title}
+        </h2>
+      )}
+      <div className="space-y-4">{children}</div>
     </div>
   );
-};
-
-export default PanelWrapper;
+}

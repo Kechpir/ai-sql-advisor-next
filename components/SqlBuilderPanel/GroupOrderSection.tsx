@@ -1,67 +1,130 @@
 import React from "react";
 
-interface GroupOrderSectionProps {
+interface Props {
   groupBy: string[];
-  setGroupBy: (fields: string[]) => void;
-  orderBy: { field: string; direction: "ASC" | "DESC" }[];
-  setOrderBy: (
-    orders: { field: string; direction: "ASC" | "DESC" }[]
+  orderBy: { field: string; direction: string }[];
+  onChange: (
+    groupBy: string[],
+    orderBy: { field: string; direction: string }[]
   ) => void;
+  availableFields?: string[];
 }
 
 export default function GroupOrderSection({
   groupBy,
-  setGroupBy,
   orderBy,
-  setOrderBy,
-}: GroupOrderSectionProps) {
-  const handleAddOrder = () =>
-    setOrderBy([...orderBy, { field: "", direction: "ASC" }]);
+  onChange,
+  availableFields = [],
+}: Props) {
+  const addGroup = () => onChange([...groupBy, ""], orderBy);
+  const addOrder = () =>
+    onChange(groupBy, [...orderBy, { field: "", direction: "ASC" }]);
+
+  const updateGroup = (i: number, value: string) => {
+    const updated = [...groupBy];
+    updated[i] = value;
+    onChange(updated, orderBy);
+  };
+
+  const updateOrder = (
+    i: number,
+    key: keyof (typeof orderBy)[0],
+    value: string
+  ) => {
+    const updated = [...orderBy];
+    updated[i][key] = value;
+    onChange(groupBy, updated);
+  };
+
+  const removeGroup = (i: number) =>
+    onChange(groupBy.filter((_, idx) => idx !== i), orderBy);
+  const removeOrder = (i: number) =>
+    onChange(groupBy, orderBy.filter((_, idx) => idx !== i));
 
   return (
-    <div className="group-order-section">
-      <div className="input-group">
-        <label>GROUP BY:</label>
-        <input
-          type="text"
-          placeholder="Например: name, country"
-          value={groupBy.join(", ")}
-          onChange={(e) =>
-            setGroupBy(e.target.value.split(",").map((v) => v.trim()))
-          }
-        />
-      </div>
+    <div className="mt-4">
+      {/* GROUP BY */}
+      <label className="flex items-center gap-2 mb-2 text-gray-300 text-sm font-medium">
 
-      <div className="input-group">
-        <label>ORDER BY:</label>
-        {orderBy.map((o, i) => (
-          <div key={i} className="order-row">
-            <input
-              type="text"
-              placeholder="Поле"
-              value={o.field}
-              onChange={(e) => {
-                const updated = [...orderBy];
-                updated[i].field = e.target.value;
-                setOrderBy(updated);
-              }}
-            />
+        📚 GROUP BY
+      </label>
+
+      <div className="space-y-2">
+        {groupBy.map((g, i) => (
+          <div
+            key={i}
+            className="flex flex-wrap gap-2 items-center bg-[#0f172a] border border-[#1e293b] p-2 rounded-lg"
+          >
             <select
-              value={o.direction}
-              onChange={(e) => {
-                const updated = [...orderBy];
-                updated[i].direction = e.target.value as "ASC" | "DESC";
-                setOrderBy(updated);
-              }}
+              value={g}
+              onChange={(e) => updateGroup(i, e.target.value)}
+              className="sql-input w-60"
             >
-              <option value="ASC">ASC</option>
-              <option value="DESC">DESC</option>
+              <option value="">— выбрать поле —</option>
+              {availableFields.map((f) => (
+                <option key={f}>{f}</option>
+              ))}
             </select>
+
+            <button
+              onClick={() => removeGroup(i)}
+              className="btn btn-danger btn-sm px-2 py-1 text-sm"
+              title="Удалить группу"
+            >
+              ✖
+            </button>
           </div>
         ))}
 
-        <button className="btn-add-order" onClick={handleAddOrder}>
-          ➕ Добавить сортировку
+        <button onClick={addGroup} className="btn btn-secondary btn-sm mt-2">
+          ➕ Добавить Group
+        </button>
+      </div>
+
+      {/* ORDER BY */}
+      <label className="flex items-center gap-2 mb-2 text-gray-300 text-sm font-medium">
+
+        📊 ORDER BY
+      </label>
+
+      <div className="space-y-2">
+        {orderBy.map((o, i) => (
+          <div
+            key={i}
+            className="flex flex-wrap gap-2 items-center bg-[#0f172a] border border-[#1e293b] p-2 rounded-lg"
+          >
+            <select
+              value={o.field}
+              onChange={(e) => updateOrder(i, "field", e.target.value)}
+              className="sql-input w-60"
+            >
+              <option value="">— выбрать поле —</option>
+              {availableFields.map((f) => (
+                <option key={f}>{f}</option>
+              ))}
+            </select>
+
+            <select
+              value={o.direction}
+              onChange={(e) => updateOrder(i, "direction", e.target.value)}
+              className="sql-input w-28"
+            >
+              <option>ASC</option>
+              <option>DESC</option>
+            </select>
+
+            <button
+              onClick={() => removeOrder(i)}
+              className="btn btn-danger btn-sm px-2 py-1 text-sm"
+              title="Удалить сортировку"
+            >
+              ✖
+            </button>
+          </div>
+        ))}
+
+        <button onClick={addOrder} className="btn btn-secondary btn-sm mt-2">
+          ➕ Добавить Order
         </button>
       </div>
     </div>
