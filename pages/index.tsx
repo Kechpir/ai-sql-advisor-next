@@ -5,7 +5,6 @@ import Link from "next/link";
 import DbConnect from "@/components/DbConnect";
 import SchemasManager from "./components/SchemasManager";
 import { generateSql, saveSchema } from "@/lib/api";
-import { SqlBuilderProvider } from "@/components/SqlBuilderPanel/SqlBuilderContext";
 import SqlBuilderPanel from "@/components/SqlBuilderPanel/SqlBuilderPanel";
 
 /* -------------------- CONSTANTS -------------------- */
@@ -317,9 +316,9 @@ export default function Home() {
         {/* ---- BUILDER ---- */}
         {tab === "builder" && (
           <div style={card}>
-            <SqlBuilderProvider>
+            
               <SqlBuilderPanel />
-            </SqlBuilderProvider>
+            
           </div>
         )}
       </div>
