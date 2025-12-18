@@ -1,1 +1,2 @@
-export { default } from "./SqlBuilderPanel";
+import SqlBuilderPanel from "./SqlBuilderPanel";
+export default SqlBuilderPanel;
