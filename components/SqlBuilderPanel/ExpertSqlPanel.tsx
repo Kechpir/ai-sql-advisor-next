@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 
 interface Props {
   onChange: (data: any) => void;
+  schema?: any;
+  selectedTable?: string;
 }
 
 export default function ExpertSqlPanel({ onChange }: Props) {

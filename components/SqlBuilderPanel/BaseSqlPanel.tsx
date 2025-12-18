@@ -4,6 +4,8 @@ interface Props {
   schema: any;
   onChange: (queryData: any) => void;
   onExecute?: () => void;
+  selectedTable?: string;
+  setSelectedTable?: (table: string) => void;
 }
 
 export default function BaseSqlPanel({ schema, onChange, onExecute }: Props) {

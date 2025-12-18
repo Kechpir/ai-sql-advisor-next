@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 interface Props {
   schema: any;
   onChange: (queryData: any) => void;
+  selectedTable?: string;
 }
 
 export default function AdvancedSqlPanel({ schema, onChange }: Props) {
