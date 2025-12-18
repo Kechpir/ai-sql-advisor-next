@@ -2,7 +2,8 @@ import { useRouter } from "next/router";
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import SimpleDbConnect from "@/components/SimpleDbConnect";
+import DbConnect from "@/components/DbConnect";
+import SchemasManager from "./components/SchemasManager";
 import { generateSql, saveSchema } from "@/lib/api";
 
 /* -------------------- CONSTANTS -------------------- */
@@ -34,6 +35,7 @@ async function copy(text: string) {
 /* -------------------- COMPONENT -------------------- */
 export default function Home() {
   const router = useRouter();
+  const [tab, setTab] = useState<"scan" | "saved">("scan");
   const [schemaJson, setSchemaJson] = useState<any | null>(null);
   const [nl, setNl] = useState("");
   const [generatedSql, setGeneratedSql] = useState<string | null>(null);
@@ -108,7 +110,7 @@ export default function Home() {
 
   /* -------------------- RENDER -------------------- */
   return (
-    <div style={{ maxWidth: 1400, width: 850, margin: "0 auto", padding: "40px 40px 100px" }}>
+    <div style={{ maxWidth: 1400, margin: "0 auto", padding: "40px 40px 100px" }}>
       {/* ---- HEADER ---- */}
       <header
         style={{
@@ -188,7 +190,7 @@ export default function Home() {
               e.currentTarget.style.boxShadow = "0 0 14px rgba(59,130,246,0.45)";
             }}
           >
-            🚀 Перейти в конструктор
+            🚀 Перейти в SQL интерфейс
           </Link>
         </div>
 
@@ -199,12 +201,21 @@ export default function Home() {
             borderRadius: 16,
             background: "#0f172a",
             padding: 26,
-            width: 850,
           }}
         >
-          <div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            <button onClick={() => setTab("scan")} style={tabBtn(tab === "scan")}>
+              🔎 Сканировать
+            </button>
+            <button onClick={() => setTab("saved")} style={tabBtn(tab === "saved")}>
+              💾 Сохранённые базы
+            </button>
+          </div>
+
+          {tab === "scan" && (
+            <div>
               <h3>Подключение и загрузка схемы</h3>
-              <SimpleDbConnect onLoaded={setSchemaJson} onToast={toast} />
+              <DbConnect onLoaded={setSchemaJson} onToast={toast} />
 
               {schemaJson && (
                 <>
@@ -334,6 +345,11 @@ export default function Home() {
                 </div>
               )}
             </div>
+          )}
+
+          {tab === "saved" && (
+            <SchemasManager schemaJson={schemaJson} setSchemaJson={setSchemaJson} />
+          )}
         </div>
       </div>
 
@@ -367,6 +383,14 @@ export default function Home() {
 }
 
 /* -------------------- STYLES -------------------- */
+const tabBtn = (active: boolean) => ({
+  padding: "10px 14px",
+  borderRadius: 12,
+  border: "1px solid #1f2937",
+  background: active ? "#111827" : "#0f172a",
+  color: "#e5e7eb",
+  cursor: "pointer",
+});
 const input = {
   background: "#0b1220",
   color: "#e5e7eb",

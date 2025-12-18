@@ -34,23 +34,6 @@ export async function fetchSchema(dbUrl: string, schema = 'public') {
 
 // ===== SQL generation =====
 export async function generateSql(nl: string, schemaJson: any, dialect: string = 'postgres') {
-  // Сначала пробуем локальный API endpoint
-  try {
-    const r = await fetch('/api/generate-sql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: json({ nl, schema: schemaJson, dialect }),
-    });
-    if (r.ok) {
-      return r.json();
-    }
-    // Если локальный API не работает, пробуем Supabase
-    console.warn('Локальный API не доступен, пробуем Supabase...');
-  } catch (localError) {
-    console.warn('Ошибка локального API, пробуем Supabase...', localError);
-  }
-  
-  // Fallback на Supabase Edge Function
   const r = await fetch(`${BASE}/generate_sql`, {
     method: 'POST',
     headers: headers(),

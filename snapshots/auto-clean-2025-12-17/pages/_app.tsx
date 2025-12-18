@@ -25,20 +25,14 @@ export default function App({ Component, pageProps }: AppProps) {
 
       <style jsx global>{`
         .app-layout {
+          min-height: 100vh;
           display: flex;
           flex-direction: column;
-          align-items: flex-start;
           background: radial-gradient(circle at top, #0b1220 0%, #060a12 100%);
           color: #e5e7eb;
           font-family: "Inter", sans-serif;
           transition: background 0.3s ease;
           padding: 1rem;
-          min-height: auto !important;
-          height: auto !important;
-        }
-        html, body {
-          min-height: auto !important;
-          height: auto !important;
         }
       `}</style>
     </>
