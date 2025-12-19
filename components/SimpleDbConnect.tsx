@@ -13,9 +13,10 @@ interface Connection {
 interface Props {
   onLoaded: (schema: any) => void;
   onToast: (type: "ok" | "warn" | "err", text: string) => void;
+  onConnectionString?: (connectionString: string, dbType: string) => void;
 }
 
-export default function SimpleDbConnect({ onLoaded, onToast }: Props) {
+export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString }: Props) {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [selectedSaved, setSelectedSaved] = useState<string>("");
   const [newConn, setNewConn] = useState<Connection>({
@@ -136,6 +137,20 @@ export default function SimpleDbConnect({ onLoaded, onToast }: Props) {
       };
       
       onLoaded(schemaData);
+      // Сохраняем последнее подключение в localStorage (без пароля для безопасности)
+      const lastConnection = {
+        connectionString: url,
+        dbType: dialect,
+        database: conn.database,
+        host: conn.host,
+        timestamp: Date.now(),
+      };
+      localStorage.setItem("lastConnection", JSON.stringify(lastConnection));
+      
+      // Передаем connectionString в родительский компонент
+      if (onConnectionString) {
+        onConnectionString(url, dialect);
+      }
       onToast("ok", `✅ Подключено к ${conn.database}`);
     } catch (err: any) {
       console.error("Ошибка подключения:", err);
@@ -154,28 +169,61 @@ export default function SimpleDbConnect({ onLoaded, onToast }: Props) {
         <label style={{ display: "block", marginBottom: "0.35rem", fontSize: "0.85rem", color: "#9ca3af" }}>
           Выбрать сохранённое подключение
         </label>
-        <select
-          value={selectedSaved}
-          onChange={(e) => {
-            const name = e.target.value;
-            setSelectedSaved(name);
-            const conn = connections.find((c) => c.name === name);
-            if (conn) {
-              setNewConn(conn);
-              connect(conn);
-            }
-          }}
-          disabled={connections.length === 0}
-        >
-          <option value="">
-            {connections.length === 0 ? "нет сохранённых подключений" : "— не выбрано —"}
-          </option>
-          {connections.map((c) => (
-            <option key={c.name} value={c.name}>
-              {c.name} — {c.dialect}@{c.host}:{c.port}/{c.database}
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <select
+            value={selectedSaved}
+            onChange={(e) => {
+              const name = e.target.value;
+              setSelectedSaved(name);
+              const conn = connections.find((c) => c.name === name);
+              if (conn) {
+                setNewConn(conn);
+                connect(conn);
+              }
+            }}
+            disabled={connections.length === 0}
+            style={{ flex: 1 }}
+          >
+            <option value="">
+              {connections.length === 0 ? "нет сохранённых подключений" : "— не выбрано —"}
             </option>
-          ))}
-        </select>
+            {connections.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name} — {c.dialect}@{c.host}:{c.port}/{c.database}
+              </option>
+            ))}
+          </select>
+          {selectedSaved && (
+            <button
+              onClick={() => {
+                handleDelete(selectedSaved);
+                setSelectedSaved("");
+                setNewConn({
+                  name: "",
+                  host: "",
+                  port: "5432",
+                  database: "",
+                  user: "",
+                  password: "",
+                  dialect: "postgres",
+                });
+              }}
+              style={{
+                padding: "6px 12px",
+                background: "#ef444420",
+                color: "#fecaca",
+                border: "1px solid #ef444460",
+                borderRadius: 8,
+                cursor: "pointer",
+                fontSize: 12,
+                whiteSpace: "nowrap",
+              }}
+              title="Удалить выбранное подключение"
+            >
+              🗑 Удалить
+            </button>
+          )}
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>

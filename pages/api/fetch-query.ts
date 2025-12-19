@@ -30,6 +30,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: "❌ Missing SQL query or query parameters" });
   }
 
+  // Очистка от мульти-запросов (берем только первый до ;)
+  // Драйверы pg и mysql2 могут вести себя нестабильно с мульти-запросами
+  const firstQuery = sqlQuery.split(';').filter((s: string) => s.trim()).length > 0 
+    ? sqlQuery.split(';').filter((s: string) => s.trim())[0].trim() + ';'
+    : sqlQuery;
+
   try {
     let rows: any[] = [];
     let columns: string[] = [];
@@ -38,9 +44,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (detectedDbType === "postgres" || detectedDbType === "postgresql") {
       const client = new PgClient({ connectionString });
       await client.connect();
-      const result = await client.query(sqlQuery);
-      rows = result.rows;
-      columns = result.fields.map((f) => f.name);
+      // Выполняем только первый запрос для стабильности
+      const result = await client.query(firstQuery);
+      rows = result.rows || [];
+      columns = result.fields ? result.fields.map((f) => f.name) : [];
       await client.end();
     }
 
