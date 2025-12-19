@@ -852,13 +852,20 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
                   <button
                     onClick={() => {
                       // Предотвращаем повторное открытие, если уже идет процесс сворачивания
-                      if (isSubmittingRef.current) {
-                        console.log("Кнопка Свернуть: уже идет процесс сворачивания");
+                      if (isSubmittingRef.current) return;
+
+                      // Если это существующая вкладка (id не равен "generated-sql-table"),
+                      // сворачиваем мгновенно без запроса имени
+                      if (id !== "generated-sql-table") {
+                        if (onMinimize) {
+                          onMinimize(id, minimizeTabName);
+                        }
                         return;
                       }
+
+                      // Для нового результата показываем ввод имени
                       setShowMinimizeInput(true);
                       setMinimizeTabName("");
-                      // Фокус на input после небольшой задержки
                       setTimeout(() => {
                         minimizeInputRef.current?.focus();
                       }, 50);

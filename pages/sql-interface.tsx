@@ -5,9 +5,11 @@ import AdvancedSqlPanel from "@/components/SqlBuilderPanel/AdvancedSqlPanel";
 import ExpertSqlPanel from "@/components/SqlBuilderPanel/ExpertSqlPanel";
 import ConnectionsPanel from "@/components/SqlBuilderPanel/ConnectionsPanel";
 import DataTableModal from "@/components/DataTableModal";
+import TableTabsBar from "@/components/TableTabsBar";
 
-interface ModalData {
+interface TabData {
   id: string;
+  title: string;
   sql: string;
   columns: string[];
   rows: any[];
@@ -21,10 +23,51 @@ export default function SqlInterfacePage() {
   const [baseSql, setBaseSql] = useState<any>({});
   const [advancedSql, setAdvancedSql] = useState<any>({});
   const [expertSql, setExpertSql] = useState<any>({});
-  const [modals, setModals] = useState<ModalData[]>([]);
+  
+  // Управление результатами
+  const [showTableModal, setShowTableModal] = useState<TabData | null>(null);
+  const [tabs, setTabs] = useState<TabData[]>([]);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Загружаем вкладки из sessionStorage при монтировании
+  useEffect(() => {
+    try {
+      const savedTabs = sessionStorage.getItem("constructorTabs");
+      if (savedTabs) {
+        const parsedTabs = JSON.parse(savedTabs);
+        setTabs(parsedTabs.map((tab: any) => ({
+          ...tab,
+          rows: [] // Не загружаем rows сразу
+        })));
+      }
+    } catch (e) {
+      console.error("Ошибка загрузки вкладок:", e);
+    }
+  }, []);
+
+  // Сохраняем метаданные вкладок в sessionStorage
+  useEffect(() => {
+    if (tabs.length > 0) {
+      try {
+        const tabsMeta = tabs.map((tab, index) => ({
+          id: tab.id,
+          title: tab.title || `Query ${index + 1}`,
+          sql: tab.sql,
+          columns: tab.columns,
+          rowCount: tab.rows.length
+        }));
+        sessionStorage.setItem("constructorTabs", JSON.stringify(tabsMeta));
+      } catch (e) {
+        console.error("Ошибка сохранения вкладок:", e);
+      }
+    } else {
+      sessionStorage.removeItem("constructorTabs");
+    }
+  }, [tabs]);
 
   // Определяем тип БД из строки подключения
   const detectDbType = (url: string): string => {
@@ -106,24 +149,19 @@ export default function SqlInterfacePage() {
       if (!res.ok) throw new Error(result.error || "Ошибка SQL");
 
       const id = Date.now().toString();
-      setModals((prev) => [
-        ...prev,
-        {
-          id,
-          sql: result.sql || "",
-          columns: result.columns || [],
-          rows: result.rows || [],
-        },
-      ]);
+      const modalData: TabData = {
+        id,
+        title: baseSql.table ? `Result: ${baseSql.table}` : `Result ${Date.now()}`,
+        sql: result.sql || "",
+        columns: result.columns || [],
+        rows: result.rows || [],
+      };
+      setShowTableModal(modalData);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleCloseModal = (id: string) => {
-    setModals((prev) => prev.filter((m) => m.id !== id));
   };
 
   // Компенсация высоты после масштабирования
@@ -302,17 +340,89 @@ export default function SqlInterfacePage() {
         </div>
       </div>
 
-      {/* Результаты SQL */}
-      {modals.map((modal) => (
+      {/* ---- MODAL ---- */}
+      {/* Приоритет отдаем showTableModal (новое окно), если его нет - activeTabId (окно из вкладки) */}
+      {(showTableModal || (activeTabId && tabs.find(t => t.id === activeTabId))) && (
         <DataTableModal
-          key={modal.id}
-          id={modal.id}
-          sql={modal.sql}
-          columns={modal.columns}
-          rows={modal.rows}
-          onClose={handleCloseModal}
+          id={showTableModal ? "generated-sql-table" : activeTabId!}
+          sql={showTableModal ? showTableModal.sql : tabs.find(t => t.id === activeTabId)!.sql}
+          columns={showTableModal ? showTableModal.columns : tabs.find(t => t.id === activeTabId)!.columns}
+          rows={showTableModal ? showTableModal.rows : tabs.find(t => t.id === activeTabId)!.rows}
+          currentName={showTableModal ? "" : tabs.find(t => t.id === activeTabId)?.title}
+          onClose={(id) => {
+            console.log("Закрытие модального окна:", id);
+            if (showTableModal) {
+              setShowTableModal(null);
+            } else {
+              setActiveTabId(null);
+            }
+          }}
+          onMinimize={(id, tabName) => {
+            console.log("🔵 onMinimize вызван:", { id, tabName, isNew: !!showTableModal });
+            
+            // Сохраняем данные если это новое окно
+            const modalData = showTableModal;
+            
+            // Пытаемся найти существующую вкладку
+            const existingTab = tabs.find(t => t.id === id);
+            
+            // Нормализуем имя
+            let normalizedName = (tabName && typeof tabName === "string" && tabName.trim()) 
+              ? tabName.trim() 
+              : null;
+
+            if (modalData) {
+              // Сворачиваем новое окно в вкладку
+              const tabId = `tab-${Date.now()}`;
+              const finalName = normalizedName || (baseSql.table ? `Result: ${baseSql.table}` : `Result ${tabs.length + 1}`);
+              console.log("🔵 Создание новой вкладки:", { tabId, finalName });
+              
+              setTabs(prev => [
+                ...prev,
+                {
+                  id: tabId,
+                  title: finalName,
+                  sql: modalData.sql,
+                  columns: modalData.columns,
+                  rows: modalData.rows,
+                }
+              ]);
+              setShowTableModal(null);
+            } else {
+              // Переименовываем существующую вкладку если введено НОВОЕ имя
+              if (normalizedName && existingTab && existingTab.title !== normalizedName) {
+                console.log("🔵 Переименование вкладки:", { id, normalizedName });
+                setTabs(prev => prev.map(t => t.id === id ? { ...t, title: normalizedName! } : t));
+              }
+              setActiveTabId(null);
+            }
+          }}
         />
-      ))}
+      )}
+
+      {/* Панель вкладок снизу */}
+      <TableTabsBar
+        tabs={tabs.map(tab => ({
+          id: tab.id,
+          title: tab.title || `Query ${tabs.indexOf(tab) + 1}`,
+          sql: tab.sql,
+          columns: tab.columns,
+          rowCount: tab.rows.length,
+        }))}
+        activeTabId={activeTabId}
+        onTabClick={(id) => {
+          setActiveTabId(id);
+        }}
+        onTabClose={(id) => {
+          setTabs(tabs.filter(t => t.id !== id));
+          if (activeTabId === id) {
+            setActiveTabId(null);
+          }
+        }}
+        onTabRename={(id, newTitle) => {
+          setTabs(tabs.map(t => t.id === id ? { ...t, title: newTitle } : t));
+        }}
+      />
 
       {/* Плавающая кнопка "Выполнить" справа по центру */}
       {connectionString && (
