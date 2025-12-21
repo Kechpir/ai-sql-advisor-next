@@ -1,18 +1,140 @@
 import type { NextApiRequest, NextApiResponse } from "next";
+import { createClient } from '@supabase/supabase-js';
+
+// CORS заголовки
+function setCorsHeaders(res: NextApiResponse, origin: string | undefined) {
+  const allowedOrigins = [
+    'https://ai-sql-advisor.vercel.app',
+    'https://ai-sql-advisor-next-stage.vercel.app',
+    'http://localhost:3000',
+    'http://localhost:3001'
+  ];
+  
+  const originHeader = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+  
+  res.setHeader('Access-Control-Allow-Origin', originHeader);
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+// Извлечение user_id из JWT токена
+function getUserIdFromJWT(jwt: string | null): string | null {
+  if (!jwt) return null;
+  try {
+    const parts = jwt.split(".");
+    if (parts.length !== 3) {
+      console.warn('[generate-sql] JWT имеет неверный формат (не 3 части)');
+      return null;
+    }
+    // Безопасное декодирование base64
+    const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf-8'));
+    const userId = payload?.sub ?? null;
+    if (!userId) {
+      console.warn('[generate-sql] JWT не содержит sub (user_id)');
+    }
+    return userId;
+  } catch (err: any) {
+    console.warn('[generate-sql] Ошибка декодирования JWT:', err?.message || String(err));
+    return null;
+  }
+}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  const origin = req.headers.origin;
+  setCorsHeaders(res, origin);
+  
+  // Обработка preflight запросов
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+  
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Метод не поддерживается (требуется POST)" });
   }
 
-  const { nl, schema, dialect = "postgres" } = req.body;
+  // Обертка для перехвата всех ошибок
+  try {
+
+  // Безопасное чтение тела запроса
+  let body;
+  try {
+    body = req.body;
+    // Если тело уже распарсено Next.js, используем его
+    if (!body && req.method === 'POST') {
+      // Fallback для случаев, когда Next.js не распарсил тело
+      return res.status(400).json({ error: "Не удалось прочитать тело запроса" });
+    }
+  } catch (e) {
+    console.error("Ошибка чтения тела запроса:", e);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.status(400).json({ error: "Ошибка парсинга тела запроса" });
+  }
+
+  const { nl, schema, dialect = "postgres" } = body || {};
 
   if (!nl || !schema) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.status(400).json({ error: "Не переданы nl (запрос) или schema (схема БД)" });
+  }
+
+  // Проверка лимита токенов перед генерацией
+  const authHeader = req.headers.authorization;
+  const jwt = authHeader?.replace(/^Bearer /i, '') || null;
+  const userId = getUserIdFromJWT(jwt);
+
+  if (userId) {
+    try {
+      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+      const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/\s+/g, '');
+      const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)?.trim().replace(/\s+/g, '');
+      
+      if (supabaseUrl && (anonKey || serviceKey)) {
+        const supabase = createClient(
+          supabaseUrl,
+          serviceKey || anonKey!,
+          {
+            auth: { persistSession: false, autoRefreshToken: false },
+            global: { ...(jwt && anonKey ? { headers: { 'Authorization': `Bearer ${jwt}` } } : {}) }
+          }
+        );
+
+        // Проверка rate limit
+        const { data: rateLimitCheck } = await supabase.rpc('check_rate_limit', {
+          user_uuid: userId,
+          endpoint_name: 'generate_sql',
+          limit_count: 10,
+          window_type: 'minute'
+        });
+
+        if (rateLimitCheck === false) {
+          return res.status(429).json({ error: "Превышен лимит запросов. Попробуйте позже." });
+        }
+
+        // Проверка лимита токенов
+        const { data: tokenLimit } = await supabase.rpc('check_token_limit', {
+          user_uuid: userId
+        });
+
+        if (tokenLimit && tokenLimit[0] && !tokenLimit[0].within_limit) {
+          return res.status(403).json({ 
+            error: "Достигнут лимит токенов",
+            limit_reached: true,
+            tokens_used: tokenLimit[0].tokens_used,
+            token_limit: tokenLimit[0].token_limit,
+            remaining: tokenLimit[0].remaining
+          });
+        }
+      }
+    } catch (limitError) {
+      console.warn("Ошибка проверки лимитов:", limitError);
+      // Продолжаем выполнение, если проверка лимитов не удалась
+    }
   }
 
   const openaiApiKey = process.env.OPENAI_API_KEY;
   if (!openaiApiKey) {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.status(500).json({ 
       error: "OPENAI_API_KEY не настроен. Добавь его в .env.local файл." 
     });
@@ -20,9 +142,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // Формируем промпт для OpenAI
-    const schemaText = typeof schema === "string" 
-      ? schema 
-      : JSON.stringify(schema, null, 2);
+    // Безопасная сериализация схемы
+    let schemaText: string;
+    try {
+      schemaText = typeof schema === "string" 
+        ? schema 
+        : JSON.stringify(schema, null, 2);
+    } catch (e) {
+      console.error("Ошибка сериализации схемы:", e);
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.status(400).json({ error: "Неверный формат схемы БД" });
+    }
 
     // Проверяем, есть ли данные из файла в запросе
     const hasFileContext = nl.includes("Контекст из файла");
@@ -77,24 +207,159 @@ SQL запрос:`;
 
     const data = await response.json();
     const sql = data.choices?.[0]?.message?.content?.trim() || "";
+    const usage = data?.usage || null;
+    const tokensUsed = usage?.total_tokens || 0;
 
     if (!sql) {
       throw new Error("OpenAI не вернул SQL запрос");
+    }
+
+    // Обновление счетчика токенов (если есть авторизация)
+    if (tokensUsed > 0) {
+      try {
+        const authHeader = req.headers.authorization;
+        const jwt = authHeader?.replace(/^Bearer /i, '') || null;
+        const userId = getUserIdFromJWT(jwt);
+
+        console.log(`[generate-sql] Обновление токенов: userId=${userId}, tokensUsed=${tokensUsed}, jwt=${jwt ? 'present' : 'missing'}`);
+
+        if (!userId) {
+          console.warn('[generate-sql] userId не найден, пропускаем обновление токенов');
+        } else if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+          console.warn('[generate-sql] NEXT_PUBLIC_SUPABASE_URL не настроен, пропускаем обновление токенов');
+        } else {
+          // Используем ANON_KEY с JWT токеном для работы с RLS
+          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/\s+/g, '');
+          const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)?.trim().replace(/\s+/g, '');
+          
+          if (!anonKey && !serviceKey) {
+            console.warn("Supabase ключ не настроен, пропускаем обновление токенов");
+            console.warn("Добавьте в .env.local: NEXT_PUBLIC_SUPABASE_ANON_KEY");
+          } else {
+            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+            let supabase;
+            
+            if (anonKey) {
+              // Anon key + JWT токен для RLS
+              supabase = createClient(
+                supabaseUrl!,
+                anonKey,
+                {
+                  auth: {
+                    persistSession: false,
+                    autoRefreshToken: false,
+                  },
+                  global: {
+                    headers: {
+                      'Authorization': `Bearer ${jwt}`,
+                    }
+                  }
+                }
+              );
+              console.log('[generate-sql] Используем ANON key с JWT для обновления токенов');
+            } else {
+              // Fallback на service key
+              supabase = createClient(
+                supabaseUrl!,
+                serviceKey!,
+                {
+                  auth: {
+                    persistSession: false,
+                    autoRefreshToken: false,
+                  }
+                }
+              );
+              console.log('[generate-sql] Используем SERVICE key для обновления токенов');
+            }
+
+            // Используем RPC функцию для атомарного обновления
+            const { data: rpcData, error: rpcError } = await supabase.rpc("add_user_tokens", {
+              user_uuid: userId,
+              tokens_to_add: tokensUsed,
+            });
+
+            if (rpcError) {
+              console.warn(`[generate-sql] RPC ошибка:`, rpcError);
+              // Fallback: если RPC не работает, используем прямой upsert
+              const { data: existing, error: selectError } = await supabase
+                .from("user_token_usage")
+                .select("tokens_used")
+                .eq("user_id", userId)
+                .single();
+              
+              if (selectError && selectError.code !== 'PGRST116') {
+                console.error(`[generate-sql] Ошибка получения существующих токенов:`, selectError);
+              }
+              
+              const currentTokens = existing?.tokens_used || 0;
+              const newTotal = currentTokens + tokensUsed;
+              console.log(`[generate-sql] Fallback upsert: current=${currentTokens}, adding=${tokensUsed}, newTotal=${newTotal}`);
+              
+              const { error: upsertError } = await supabase
+                .from("user_token_usage")
+                .upsert({
+                  user_id: userId,
+                  tokens_used: newTotal,
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: "user_id" });
+              
+              if (upsertError) {
+                console.error(`[generate-sql] Ошибка upsert токенов:`, upsertError);
+              } else {
+                console.log(`[generate-sql] ✅ Токены успешно обновлены через upsert: ${newTotal}`);
+              }
+            } else {
+              console.log(`[generate-sql] ✅ Токены успешно обновлены через RPC: ${rpcData}`);
+            }
+
+            // Логирование использования (если таблица существует)
+            try {
+              await supabase.from("api_usage_logs").insert({
+                user_id: userId,
+                function_name: "generate_sql",
+                tokens_used: tokensUsed,
+                created_at: new Date().toISOString(),
+              });
+            } catch (logError) {
+              // Игнорируем ошибки логирования
+              console.warn("Failed to log usage (table may not exist):", logError);
+            }
+          }
+        }
+      } catch (tokenError) {
+        // Игнорируем ошибки обновления токенов, но логируем
+        console.warn("Failed to update token count (table may not exist):", tokenError);
+      }
     }
 
     // Проверяем на опасные операции
     const dangerKeywords = /DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|GRANT|REVOKE/i;
     const isDangerous = dangerKeywords.test(sql);
 
+    // Отправляем событие для обновления счетчика токенов на фронте
+    // Это будет обработано в TokenCounter компоненте
+    if (typeof window !== 'undefined') {
+      // В API route нет window, но событие будет отправлено через response
+      // Фронт должен слушать событие после получения ответа
+    }
+
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.status(200).json({
       sql,
       blocked: isDangerous,
       withSafety: isDangerous ? `-- ⚠️ Запрос содержит опасные операции. Используй только SELECT:\n${sql}` : null,
+      usage, // Возвращаем информацию об использовании токенов
+      tokens_used: tokensUsed, // Добавляем информацию о потраченных токенах
     });
+    
+    return response;
   } catch (err: any) {
     console.error("Ошибка генерации SQL:", err);
+    const errorMessage = err?.message || "Ошибка генерации SQL";
+    // Убеждаемся, что ошибка правильно сериализуется в JSON
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.status(500).json({
-      error: err.message || "Ошибка генерации SQL",
+      error: String(errorMessage),
     });
   }
 }

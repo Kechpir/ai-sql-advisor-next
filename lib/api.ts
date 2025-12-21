@@ -46,23 +46,39 @@ export async function fetchSchema(dbUrl: string, schema = 'public') {
 
 // ===== SQL generation =====
 export async function generateSql(nl: string, schemaJson: any, dialect: string = 'postgres') {
+  // Получаем JWT токен один раз в начале функции
+  const jwt = getToken();
+  
   // Сначала пробуем локальный API endpoint
   let localApiError: string | null = null;
   
   try {
     const r = await fetch('/api/generate-sql', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        ...(jwt && isValidJWT(jwt) ? { 'Authorization': `Bearer ${jwt}` } : {})
+      },
       body: json({ nl, schema: schemaJson, dialect }),
     });
     
     if (r.ok) {
       const data = await r.json();
+      // Отправляем событие для обновления счетчика токенов на фронте
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('sql-generated'));
+      }
       return data;
     }
     
     // Если локальный API вернул ошибку, читаем её
-    const errorText = await r.text();
+    let errorText: string;
+    try {
+      errorText = await r.text();
+    } catch (e) {
+      errorText = `HTTP ${r.status} ${r.statusText}`;
+    }
+    
     let errorMessage = errorText;
     try {
       const errorJson = JSON.parse(errorText);
@@ -71,18 +87,19 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
       // Если не JSON, используем текст как есть
     }
     
-    localApiError = errorMessage;
+    // Нормализуем строку для безопасной обработки
+    localApiError = String(errorMessage);
     
     // Если это ошибка конфигурации (нет API ключа), не пробуем Supabase
-    if (r.status === 500 && errorMessage.includes('OPENAI_API_KEY')) {
-      throw new Error(`❌ ${errorMessage}\n\n💡 Решение: Добавьте OPENAI_API_KEY в файл .env.local и перезапустите сервер.`);
+    if (r.status === 500 && String(errorMessage).includes('OPENAI_API_KEY')) {
+      throw new Error(`❌ ${String(errorMessage)}\n\n💡 Решение: Добавьте OPENAI_API_KEY в файл .env.local и перезапустите сервер.`);
     }
     
     // Если локальный API не работает по другой причине, пробуем Supabase только если есть валидный JWT
-    const jwt = getToken();
     if (!jwt || !isValidJWT(jwt)) {
+      const safeError = String(errorMessage || 'Неизвестная ошибка');
       throw new Error(
-        `❌ Локальный API недоступен: ${errorMessage}\n\n` +
+        `❌ Локальный API недоступен: ${safeError}\n\n` +
         `💡 Решение:\n` +
         `1. Либо настройте OPENAI_API_KEY в .env.local для локального API\n` +
         `2. Либо войдите в систему через /auth для использования Supabase fallback`
@@ -101,9 +118,8 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
     }
     
     // Если это сетевая ошибка, проверяем JWT перед fallback
-    const jwt = getToken();
     if (!jwt || !isValidJWT(jwt)) {
-      const errorMsg = localApiError || localError.message || 'Неизвестная ошибка';
+      const errorMsg = String(localApiError || localError?.message || 'Неизвестная ошибка');
       throw new Error(
         `❌ Локальный API недоступен: ${errorMsg}\n\n` +
         `💡 Решение:\n` +
@@ -117,7 +133,6 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
   }
   
   // Fallback на Supabase Edge Function (только если есть валидный JWT)
-  const jwt = getToken();
   if (!jwt || !isValidJWT(jwt)) {
     throw new Error(
       `❌ Для использования Supabase требуется валидная авторизация.\n\n` +
@@ -134,7 +149,13 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
     });
     
     if (!r.ok) {
-      const errorText = await r.text();
+      let errorText: string;
+      try {
+        errorText = await r.text();
+      } catch (e) {
+        errorText = `HTTP ${r.status} ${r.statusText}`;
+      }
+      
       let errorMessage = errorText;
       try {
         const errorJson = JSON.parse(errorText);
@@ -143,15 +164,18 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
         // Если не JSON, используем текст как есть
       }
       
-      console.error('❌ Supabase ошибка:', r.status, errorMessage);
+      // Нормализуем для безопасной обработки
+      const safeErrorMessage = String(errorMessage);
+      console.error('❌ Supabase ошибка:', r.status, safeErrorMessage);
       
       // Если ошибка связана с JWT (401 или сообщение содержит JWT/Invalid/token), очищаем токен
+      const errorLower = safeErrorMessage.toLowerCase();
       if (r.status === 401 || 
-          errorMessage.toLowerCase().includes('jwt') || 
-          errorMessage.toLowerCase().includes('invalid') || 
-          errorMessage.toLowerCase().includes('token') ||
-          errorMessage.toLowerCase().includes('unauthorized') ||
-          errorMessage.toLowerCase().includes('expired')) {
+          errorLower.includes('jwt') || 
+          errorLower.includes('invalid') || 
+          errorLower.includes('token') ||
+          errorLower.includes('unauthorized') ||
+          errorLower.includes('expired')) {
         // Очищаем невалидный токен
         try {
           localStorage.removeItem('jwt');
@@ -160,15 +184,20 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
         throw new Error(
           `❌ Токен авторизации невалиден или истек.\n\n` +
           `💡 Решение: Перейдите на /auth и войдите в систему заново.\n\n` +
-          `📋 Детали ошибки: ${errorMessage}`
+          `📋 Детали ошибки: ${safeErrorMessage}`
         );
       }
       
-      throw new Error(`❌ Ошибка Supabase (${r.status}): ${errorMessage}`);
+      throw new Error(`❌ Ошибка Supabase (${r.status}): ${safeErrorMessage}`);
     }
     
     console.log('✅ Supabase успешно обработал запрос');
-    return r.json();
+    const data = await r.json();
+    // Отправляем событие для обновления счетчика токенов на фронте
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('sql-generated'));
+    }
+    return data;
   } catch (supabaseError: any) {
     // Если это уже наша обработанная ошибка, пробрасываем дальше
     if (supabaseError.message && (

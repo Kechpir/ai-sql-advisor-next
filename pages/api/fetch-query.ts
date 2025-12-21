@@ -3,7 +3,7 @@ import { Client as PgClient } from "pg";
 import mysql from "mysql2/promise";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
-import { jsonToSql } from "@/utils/jsonToSql";
+import { jsonToSql } from "@/lib/db/jsonToSql";
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
@@ -28,6 +28,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!sqlQuery) {
     return res.status(400).json({ error: "❌ Missing SQL query or query parameters" });
+  }
+
+  // Валидация SQL запроса (защита от SQL injection)
+  const sqlUpper = sqlQuery.trim().toUpperCase();
+  if (!sqlUpper.startsWith('SELECT')) {
+    return res.status(400).json({ error: "❌ Only SELECT queries are allowed" });
+  }
+
+  // Блокируем опасные операции
+  const dangerKeywords = /DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC|EXECUTE|CALL/i;
+  if (dangerKeywords.test(sqlQuery)) {
+    return res.status(400).json({ error: "❌ Dangerous operations are not allowed" });
+  }
+
+  // Максимальная длина запроса (защита от DoS)
+  if (sqlQuery.length > 100000) {
+    return res.status(400).json({ error: "❌ SQL query is too long (max 100KB)" });
   }
 
   // Очистка от мульти-запросов (берем только первый до ;)

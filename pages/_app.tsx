@@ -2,7 +2,7 @@ import type { AppProps } from "next/app";
 import Head from "next/head";
 
 // 🎨 Единый глобальный стиль
-import "./styles/main.css";
+import "../styles/main.css";
 
 
 
@@ -33,8 +33,9 @@ export default function App({ Component, pageProps }: AppProps) {
           font-family: "Inter", sans-serif;
           transition: background 0.3s ease;
           padding: 1rem;
+          width: 100%;
           min-height: auto !important;
-          height: auto !important;
+          height: 100% !important;
         }
         html, body {
           min-height: auto !important;

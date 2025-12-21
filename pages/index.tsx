@@ -2,10 +2,11 @@ import { useRouter } from "next/router";
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import SimpleDbConnect from "@/components/SimpleDbConnect";
-import FileUpload from "@/components/FileUpload";
-import DataTableModal from "@/components/DataTableModal";
-import TableTabsBar from "@/components/TableTabsBar";
+import SimpleDbConnect from "@/components/connections/SimpleDbConnect";
+import FileUpload from "@/components/common/FileUpload";
+import DataTableModal from "@/components/tables/DataTableModal";
+import TableTabsBar from "@/components/tables/TableTabsBar";
+import TokenCounter from "@/components/common/TokenCounter";
 import { generateSql, saveSchema } from "@/lib/api";
 
 /* -------------------- CONSTANTS -------------------- */
@@ -241,6 +242,9 @@ export default function Home() {
       const apiSavepoint = data?.withSafety ?? data?.variantSavepoint ?? null;
       setSavepointSql(apiSavepoint);
       setDanger(!!apiSavepoint || DANGER_RE.test(sql));
+
+      // Отправляем событие для обновления счетчика токенов
+      window.dispatchEvent(new Event('sql-generated'));
     } catch (e: any) {
       console.error(e);
       const errorMessage = e?.message || "Ошибка генерации";
@@ -329,6 +333,9 @@ export default function Home() {
         const apiSavepoint = data?.withSafety ?? data?.variantSavepoint ?? null;
         setSavepointSql(apiSavepoint);
         setDanger(!!apiSavepoint || DANGER_RE.test(sql));
+
+        // Отправляем событие для обновления счетчика токенов
+        window.dispatchEvent(new Event('sql-generated'));
       } catch (e: any) {
         console.error(e);
         const errorMessage = e?.message || "Ошибка генерации";
@@ -411,6 +418,7 @@ export default function Home() {
           alignItems: "center",
           justifyContent: "space-between",
           marginBottom: 30,
+          position: "relative",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -437,22 +445,52 @@ export default function Home() {
         </div>
 
         {signedIn && (
-          <button
-            onClick={() => {
-              localStorage.removeItem("jwt");
-              location.reload();
-            }}
-            style={{
-              background: "#0b1220",
-              color: "#e5e7eb",
-              border: "1px solid #1f2937",
-              borderRadius: 10,
-              padding: "6px 10px",
-              cursor: "pointer",
-            }}
-          >
-            Sign out
-          </button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "10px" }}>
+            {/* Счетчик токенов в header */}
+            <TokenCounter />
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Link
+              href="/tarify"
+              style={{
+                background: "rgba(96, 165, 250, 0.1)",
+                color: "#60a5fa",
+                border: "1px solid rgba(96, 165, 250, 0.3)",
+                borderRadius: 10,
+                padding: "6px 14px",
+                textDecoration: "none",
+                fontWeight: 500,
+                fontSize: 14,
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "rgba(96, 165, 250, 0.2)";
+                e.currentTarget.style.borderColor = "rgba(96, 165, 250, 0.5)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "rgba(96, 165, 250, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(96, 165, 250, 0.3)";
+              }}
+            >
+              💰 Тарифы
+            </Link>
+            <button
+              onClick={() => {
+                localStorage.removeItem("jwt");
+                location.reload();
+              }}
+              style={{
+                background: "#0b1220",
+                color: "#e5e7eb",
+                border: "1px solid #1f2937",
+                borderRadius: 10,
+                padding: "6px 10px",
+                cursor: "pointer",
+              }}
+            >
+              Sign out
+            </button>
+            </div>
+          </div>
         )}
       </header>
 

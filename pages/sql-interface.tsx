@@ -4,8 +4,9 @@ import BaseSqlPanel from "@/components/SqlBuilderPanel/BaseSqlPanel";
 import AdvancedSqlPanel from "@/components/SqlBuilderPanel/AdvancedSqlPanel";
 import ExpertSqlPanel from "@/components/SqlBuilderPanel/ExpertSqlPanel";
 import ConnectionsPanel from "@/components/SqlBuilderPanel/ConnectionsPanel";
-import DataTableModal from "@/components/DataTableModal";
-import TableTabsBar from "@/components/TableTabsBar";
+import DataTableModal from "@/components/tables/DataTableModal";
+import TableTabsBar from "@/components/tables/TableTabsBar";
+import TokenCounter from "@/components/common/TokenCounter";
 
 interface TabData {
   id: string;
@@ -176,7 +177,8 @@ export default function SqlInterfacePage() {
 
   // 🎨 UI
   return (
-    <main
+    <>
+      <main
       className="flex flex-col items-center px-6 text-gray-100"
       style={{
         background:
@@ -204,7 +206,11 @@ export default function SqlInterfacePage() {
             paddingBottom: "0",
           }}
         >
-        <header className="text-center mb-8">
+        <header className="text-center mb-8" style={{ position: "relative" }}>
+          {/* Счетчик токенов в header */}
+          <div style={{ position: "absolute", top: 0, right: 0 }}>
+            <TokenCounter />
+          </div>
           <h1 className="text-3xl font-bold text-[#00d8ff] tracking-wide drop-shadow-lg">
             🧠 AI SQL Конструктор
           </h1>
@@ -503,6 +509,7 @@ export default function SqlInterfacePage() {
           )}
         </button>
       )}
-    </main>
+      </main>
+    </>
   );
 }
