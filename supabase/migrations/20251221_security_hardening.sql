@@ -287,12 +287,12 @@ BEGIN
   END CASE;
   
   -- Получаем текущий счетчик
-  SELECT COALESCE(request_count, 0) INTO current_count
-  FROM rate_limits
-  WHERE user_id = user_uuid
-    AND endpoint = endpoint_name
-    AND window_type = window_type
-    AND window_start = window_start_time;
+  SELECT COALESCE(rl.request_count, 0) INTO current_count
+  FROM rate_limits rl
+  WHERE rl.user_id = user_uuid
+    AND rl.endpoint = endpoint_name
+    AND rl.window_type = check_rate_limit.window_type
+    AND rl.window_start = window_start_time;
   
   -- Если превышен лимит
   IF current_count >= limit_count THEN

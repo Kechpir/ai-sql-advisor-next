@@ -7,6 +7,7 @@ import FileUpload from "@/components/common/FileUpload";
 import DataTableModal from "@/components/tables/DataTableModal";
 import TableTabsBar from "@/components/tables/TableTabsBar";
 import TokenCounter from "@/components/common/TokenCounter";
+import LimitModal from "@/components/common/LimitModal";
 import { generateSql, saveSchema } from "@/lib/api";
 
 /* -------------------- CONSTANTS -------------------- */
@@ -61,6 +62,17 @@ export default function Home() {
   const [connectionString, setConnectionString] = useState<string | null>(null);
   const [dbType, setDbType] = useState<string>("postgres");
   const [hasActiveConnection, setHasActiveConnection] = useState<boolean>(false);
+  const [limitModal, setLimitModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type?: "limit" | "error";
+  }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "limit",
+  });
 
   // Загружаем последнее подключение из localStorage при монтировании
   useEffect(() => {
@@ -248,7 +260,27 @@ export default function Home() {
     } catch (e: any) {
       console.error(e);
       const errorMessage = e?.message || "Ошибка генерации";
-      toast("err", errorMessage);
+      
+      // Проверяем, является ли это ошибкой лимита токенов
+      if (errorMessage.includes("Достигнут лимит токенов") || errorMessage.includes("limit_reached")) {
+        // Парсим информацию о лимите из сообщения
+        const tokensUsedMatch = errorMessage.match(/Использовано:\s*(\d+)/);
+        const tokenLimitMatch = errorMessage.match(/из\s*(\d+)/);
+        const remainingMatch = errorMessage.match(/Осталось:\s*(\d+)/);
+        
+        const tokensUsed = tokensUsedMatch ? tokensUsedMatch[1] : "0";
+        const tokenLimit = tokenLimitMatch ? tokenLimitMatch[1] : "0";
+        const remaining = remainingMatch ? remainingMatch[1] : "0";
+        
+        setLimitModal({
+          isOpen: true,
+          title: "Достигнут лимит токенов",
+          message: `Использовано: ${tokensUsed} из ${tokenLimit}\nОсталось: ${remaining} токенов\n\n💡 Для увеличения лимита перейдите на более высокий тариф.`,
+          type: "limit",
+        });
+      } else {
+        toast("err", errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -846,6 +878,15 @@ export default function Home() {
         onTabRename={(id, newTitle) => {
           setTabs(tabs.map(t => t.id === id ? { ...t, title: newTitle } : t));
         }}
+      />
+
+      {/* ---- LIMIT MODAL ---- */}
+      <LimitModal
+        isOpen={limitModal.isOpen}
+        onClose={() => setLimitModal({ ...limitModal, isOpen: false })}
+        title={limitModal.title}
+        message={limitModal.message}
+        type={limitModal.type}
       />
 
       {/* ---- TOAST ---- */}

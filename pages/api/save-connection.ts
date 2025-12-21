@@ -85,16 +85,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(500).json({ error: "Supabase не настроен" });
   }
 
+  // Используем anon key с JWT для работы с RLS, если есть JWT
+  // Иначе используем service key (если есть), иначе anon key
+  const useAnonKey = jwt && anonKey;
+  const supabaseKey = useAnonKey ? anonKey! : (serviceKey || anonKey!);
+  
   const supabase = createClient(
     supabaseUrl,
-    serviceKey || anonKey!,
+    supabaseKey,
     {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
       },
       global: {
-        ...(jwt && anonKey ? { headers: { 'Authorization': `Bearer ${jwt}` } } : {})
+        ...(jwt && useAnonKey ? { headers: { 'Authorization': `Bearer ${jwt}` } } : {})
       }
     }
   );

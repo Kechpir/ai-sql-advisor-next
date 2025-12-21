@@ -302,6 +302,72 @@ Deno.serve(async (req) => {
     const plan = subscription.active ? (subscription.plan || "free") : "free";
     console.log(`[generate_sql] Используемый план: ${plan}`);
 
+    // КРИТИЧНО: Проверка лимита токенов ПЕРЕД генерацией SQL
+    // Используем sbForSubscription (с service_role) для обхода RLS
+    try {
+      const { data: tokenLimit, error: tokenLimitError } = await sbForSubscription.rpc('check_token_limit', {
+        user_uuid: uid
+      });
+
+      if (tokenLimitError) {
+        console.error(`[generate_sql] Ошибка проверки лимита токенов:`, tokenLimitError);
+        return new Response(JSON.stringify({ 
+          error: "Ошибка проверки лимита токенов",
+          details: tokenLimitError.message || String(tokenLimitError)
+        }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+
+      // Проверяем, что есть данные о лимите
+      if (!tokenLimit || !Array.isArray(tokenLimit) || tokenLimit.length === 0) {
+        console.error(`[generate_sql] Лимит токенов не найден для пользователя: ${uid}`);
+        return new Response(JSON.stringify({ 
+          error: "Не удалось получить информацию о лимите токенов"
+        }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+
+      const limitData = tokenLimit[0];
+      
+      // Блокируем генерацию, если лимит достигнут или токенов нет
+      if (!limitData.within_limit || (limitData.remaining !== undefined && limitData.remaining <= 0)) {
+        console.warn(`[generate_sql] Лимит токенов достигнут для user_id: ${uid}`, {
+          tokens_used: limitData.tokens_used,
+          token_limit: limitData.token_limit,
+          remaining: limitData.remaining
+        });
+        return new Response(JSON.stringify({ 
+          error: "Достигнут лимит токенов",
+          limit_reached: true,
+          tokens_used: limitData.tokens_used,
+          token_limit: limitData.token_limit,
+          remaining: limitData.remaining || 0
+        }), {
+          status: 403,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+
+      console.log(`[generate_sql] ✅ Проверка лимита токенов пройдена для user_id: ${uid}`, {
+        tokens_used: limitData.tokens_used,
+        token_limit: limitData.token_limit,
+        remaining: limitData.remaining
+      });
+    } catch (tokenCheckError: any) {
+      console.error(`[generate_sql] Критическая ошибка проверки лимита токенов:`, tokenCheckError);
+      return new Response(JSON.stringify({ 
+        error: "Ошибка проверки лимита токенов. Генерация заблокирована для безопасности.",
+        details: tokenCheckError?.message || String(tokenCheckError)
+      }), {
+        status: 500,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
     const payload = await req.json().catch(() => ({}));
     const nl = payload?.nl ?? "";
     if (!nl || typeof nl !== "string") {

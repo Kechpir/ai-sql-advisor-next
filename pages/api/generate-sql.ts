@@ -91,12 +91,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         console.warn('[generate-sql] Supabase не настроен, пропускаем проверку лимитов');
         // Если Supabase не настроен, продолжаем (для локальной разработки)
       } else {
+        // Для RPC функций с SECURITY DEFINER нужен service_role ключ
+        // Используем service key для RPC вызовов (если есть), иначе anon key с JWT
+        const rpcKey = serviceKey || anonKey!;
+        
         const supabase = createClient(
           supabaseUrl,
-          serviceKey || anonKey!,
+          rpcKey,
           {
             auth: { persistSession: false, autoRefreshToken: false },
-            global: { ...(jwt && anonKey ? { headers: { 'Authorization': `Bearer ${jwt}` } } : {}) }
+            global: { ...(jwt && !serviceKey && anonKey ? { headers: { 'Authorization': `Bearer ${jwt}` } } : {}) }
           }
         );
 

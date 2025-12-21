@@ -80,11 +80,22 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
     }
     
     let errorMessage = errorText;
+    let errorJson: any = null;
     try {
-      const errorJson = JSON.parse(errorText);
+      errorJson = JSON.parse(errorText);
       errorMessage = errorJson.error || errorText;
     } catch {
       // Если не JSON, используем текст как есть
+    }
+    
+    // КРИТИЧНО: Если это ошибка лимита токенов (403), НЕ делаем fallback на Supabase!
+    if (r.status === 403 && errorJson?.limit_reached) {
+      throw new Error(
+        `❌ Достигнут лимит токенов\n\n` +
+        `Использовано: ${errorJson.tokens_used || 0} из ${errorJson.token_limit || 0}\n` +
+        `Осталось: ${errorJson.remaining || 0} токенов\n\n` +
+        `💡 Для увеличения лимита перейдите на более высокий тариф.`
+      );
     }
     
     // Нормализуем строку для безопасной обработки

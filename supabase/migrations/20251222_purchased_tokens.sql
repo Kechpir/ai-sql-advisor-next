@@ -35,6 +35,11 @@ END $$;
 -- RLS для purchased_tokens
 ALTER TABLE purchased_tokens ENABLE ROW LEVEL SECURITY;
 
+-- Удаляем политики, если они существуют, чтобы избежать ошибок при повторном применении
+DROP POLICY IF EXISTS "Users can view their own purchased tokens" ON purchased_tokens;
+DROP POLICY IF EXISTS "System can insert purchased tokens" ON purchased_tokens;
+DROP POLICY IF EXISTS "System can update purchased tokens" ON purchased_tokens;
+
 CREATE POLICY "Users can view their own purchased tokens"
   ON purchased_tokens FOR SELECT
   USING (auth.uid() = user_id);
@@ -49,6 +54,7 @@ CREATE POLICY "System can update purchased tokens"
   USING (true);
 
 -- Триггер для автоматического обновления updated_at
+DROP TRIGGER IF EXISTS update_purchased_tokens_updated_at ON purchased_tokens;
 CREATE TRIGGER update_purchased_tokens_updated_at
   BEFORE UPDATE ON purchased_tokens
   FOR EACH ROW
@@ -146,7 +152,7 @@ DECLARE
 BEGIN
   -- Получаем подписку пользователя
   SELECT s.*, 
-         (SELECT token_limit FROM get_plan_limits(s.plan)) as plan_limit
+         (SELECT pl.token_limit FROM get_plan_limits(s.plan) AS pl) as plan_limit
   INTO user_subscription
   FROM subscriptions s
   WHERE s.user_id = user_uuid
@@ -207,7 +213,7 @@ DECLARE
 BEGIN
   -- Получаем подписку пользователя
   SELECT s.*, 
-         (SELECT token_limit FROM get_plan_limits(s.plan)) as plan_limit
+         (SELECT pl.token_limit FROM get_plan_limits(s.plan) AS pl) as plan_limit
   INTO user_subscription
   FROM subscriptions s
   WHERE s.user_id = user_uuid
@@ -216,7 +222,7 @@ BEGIN
 
   -- Если подписки нет, возвращаем ограничения free плана
   IF NOT FOUND THEN
-    SELECT token_limit INTO plan_token_limit FROM get_plan_limits('free');
+    SELECT pl.token_limit INTO plan_token_limit FROM get_plan_limits('free') AS pl;
     SELECT COALESCE(tokens_used, 0) INTO user_tokens_used
     FROM user_token_usage
     WHERE user_id = user_uuid;
