@@ -53,7 +53,18 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
             // Обновляем счетчик токенов после открытия
             window.dispatchEvent(new Event('sql-generated'));
           } else {
-            const error = await response.json();
+            let error;
+            try {
+              error = await response.json();
+            } catch {
+              error = { error: `HTTP ${response.status}: ${response.statusText}` };
+            }
+            
+            console.log('[DataTableModal] Ошибка отслеживания открытия:', {
+              status: response.status,
+              error: error
+            });
+            
             if (error.limit_reached) {
               const message = error.error || "Достигнут лимит открытий таблиц для вашего тарифа.";
               const fullMessage = error.opens_count !== undefined && error.opens_limit !== undefined
@@ -65,11 +76,32 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
                 message: fullMessage,
                 type: "limit",
               });
-              onClose(id);
+              // НЕ закрываем модальное окно таблицы, чтобы пользователь мог увидеть уведомление
+            } else if (response.status === 403) {
+              // 403 может быть из-за лимита или проблем с правами доступа
+              // Если это не лимит, показываем ошибку доступа
+              if (!error.limit_reached) {
+                setLimitModal({
+                  isOpen: true,
+                  title: "Ошибка доступа",
+                  message: error.error || error.details || "Ошибка доступа. Пожалуйста, проверьте авторизацию.",
+                  type: "error",
+                });
+              }
+            } else if (response.status === 401) {
+              // Обработка ошибок авторизации
+              setLimitModal({
+                isOpen: true,
+                title: "Ошибка авторизации",
+                message: error.error || "Ошибка авторизации. Пожалуйста, войдите в систему заново.",
+                type: "error",
+              });
             }
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Ошибка отслеживания открытия:', err);
+          // При ошибке сети или других ошибках не показываем модальное окно
+          // чтобы не мешать работе пользователя
         }
       };
 
@@ -611,7 +643,10 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
         zIndex: 1000,
       }}
       onClick={(e) => {
-        if (e.target === modalRef.current) onClose(id);
+        // Не закрываем модальное окно, если открыто уведомление о лимите
+        if (e.target === modalRef.current && !limitModal.isOpen) {
+          onClose(id);
+        }
       }}
     >
       <div
