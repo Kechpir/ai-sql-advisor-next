@@ -80,13 +80,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const jwt = authHeader?.replace(/^Bearer /i, '') || null;
   const userId = getUserIdFromJWT(jwt);
 
+  // КРИТИЧНО: Проверка лимита токенов ДО генерации SQL
   if (userId) {
     try {
       const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
       const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/\s+/g, '');
       const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)?.trim().replace(/\s+/g, '');
       
-      if (supabaseUrl && (anonKey || serviceKey)) {
+      if (!supabaseUrl || (!anonKey && !serviceKey)) {
+        console.warn('[generate-sql] Supabase не настроен, пропускаем проверку лимитов');
+        // Если Supabase не настроен, продолжаем (для локальной разработки)
+      } else {
         const supabase = createClient(
           supabaseUrl,
           serviceKey || anonKey!,
@@ -97,36 +101,79 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         );
 
         // Проверка rate limit
-        const { data: rateLimitCheck } = await supabase.rpc('check_rate_limit', {
+        const { data: rateLimitCheck, error: rateLimitError } = await supabase.rpc('check_rate_limit', {
           user_uuid: userId,
           endpoint_name: 'generate_sql',
           limit_count: 10,
           window_type: 'minute'
         });
 
+        if (rateLimitError) {
+          console.error('[generate-sql] Ошибка проверки rate limit:', rateLimitError);
+          return res.status(500).json({ error: "Ошибка проверки лимита запросов" });
+        }
+
         if (rateLimitCheck === false) {
           return res.status(429).json({ error: "Превышен лимит запросов. Попробуйте позже." });
         }
 
-        // Проверка лимита токенов
-        const { data: tokenLimit } = await supabase.rpc('check_token_limit', {
+        // КРИТИЧЕСКАЯ проверка лимита токенов - обязательна!
+        const { data: tokenLimit, error: tokenLimitError } = await supabase.rpc('check_token_limit', {
           user_uuid: userId
         });
 
-        if (tokenLimit && tokenLimit[0] && !tokenLimit[0].within_limit) {
+        if (tokenLimitError) {
+          console.error('[generate-sql] Ошибка проверки лимита токенов:', tokenLimitError);
+          return res.status(500).json({ 
+            error: "Ошибка проверки лимита токенов",
+            details: tokenLimitError.message || String(tokenLimitError)
+          });
+        }
+
+        // Проверяем, что есть данные о лимите
+        if (!tokenLimit || !Array.isArray(tokenLimit) || tokenLimit.length === 0) {
+          console.error('[generate-sql] Лимит токенов не найден для пользователя:', userId);
+          return res.status(500).json({ error: "Не удалось получить информацию о лимите токенов" });
+        }
+
+        const limitData = tokenLimit[0];
+        
+        // Блокируем генерацию, если лимит достигнут или токенов нет
+        if (!limitData.within_limit || (limitData.remaining !== undefined && limitData.remaining <= 0)) {
+          console.warn('[generate-sql] Лимит токенов достигнут:', {
+            userId,
+            tokens_used: limitData.tokens_used,
+            token_limit: limitData.token_limit,
+            remaining: limitData.remaining
+          });
           return res.status(403).json({ 
             error: "Достигнут лимит токенов",
             limit_reached: true,
-            tokens_used: tokenLimit[0].tokens_used,
-            token_limit: tokenLimit[0].token_limit,
-            remaining: tokenLimit[0].remaining
+            tokens_used: limitData.tokens_used,
+            token_limit: limitData.token_limit,
+            remaining: limitData.remaining || 0
           });
         }
+
+        console.log('[generate-sql] Проверка лимита токенов пройдена:', {
+          userId,
+          tokens_used: limitData.tokens_used,
+          token_limit: limitData.token_limit,
+          remaining: limitData.remaining
+        });
       }
-    } catch (limitError) {
-      console.warn("Ошибка проверки лимитов:", limitError);
-      // Продолжаем выполнение, если проверка лимитов не удалась
+    } catch (limitError: any) {
+      console.error("[generate-sql] Критическая ошибка проверки лимитов:", limitError);
+      // КРИТИЧНО: Если проверка лимитов не удалась, блокируем генерацию
+      return res.status(500).json({ 
+        error: "Ошибка проверки лимитов. Генерация заблокирована для безопасности.",
+        details: limitError?.message || String(limitError)
+      });
     }
+  } else {
+    console.warn('[generate-sql] Пользователь не авторизован, пропускаем проверку лимитов');
+    // Если пользователь не авторизован, можно продолжить (для локальной разработки)
+    // Но в production лучше блокировать
   }
 
   const openaiApiKey = process.env.OPENAI_API_KEY;
@@ -174,27 +221,33 @@ ${hasFileContext ? "5. Если в файле есть данные, котор�
 SQL запрос:`;
 
     // Вызываем OpenAI API
+    // Убеждаемся, что все данные правильно кодируются в UTF-8
+    const requestBody = {
+      model: "gpt-4o-mini", // или gpt-4o, если доступен
+      messages: [
+        {
+          role: "system",
+          content: "Ты - эксперт по SQL. Генерируй только безопасные SELECT запросы на основе схемы БД.",
+        },
+        {
+          role: "user",
+          content: prompt,
+        },
+      ],
+      temperature: 0.3,
+      max_tokens: 1000,
+    };
+
+    // Сериализуем в JSON с правильной кодировкой UTF-8
+    const requestBodyJson = JSON.stringify(requestBody);
+    
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
+        "Content-Type": "application/json; charset=utf-8",
         "Authorization": `Bearer ${openaiApiKey}`,
       },
-      body: JSON.stringify({
-        model: "gpt-4o-mini", // или gpt-4o, если доступен
-        messages: [
-          {
-            role: "system",
-            content: "Ты - эксперт по SQL. Генерируй только безопасные SELECT запросы на основе схемы БД.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 1000,
-      }),
+      body: requestBodyJson,
     });
 
     if (!response.ok) {
