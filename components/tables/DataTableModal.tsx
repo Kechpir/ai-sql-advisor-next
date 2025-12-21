@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
+import LimitModal from "@/components/common/LimitModal";
 
 interface DataTableModalProps {
   id: string;
@@ -18,6 +19,12 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
   const [showMinimizeInput, setShowMinimizeInput] = useState(false);
   const [minimizeTabName, setMinimizeTabName] = useState(currentName || "");
   const [openedTracked, setOpenedTracked] = useState(false); // Флаг для отслеживания открытия
+  const [limitModal, setLimitModal] = useState<{ isOpen: boolean; title: string; message: string; type?: "limit" | "error" }>({
+    isOpen: false,
+    title: "",
+    message: "",
+    type: "limit",
+  });
 
   // Обновляем имя если оно изменилось извне
   useEffect(() => {
@@ -48,7 +55,16 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
           } else {
             const error = await response.json();
             if (error.limit_reached) {
-              alert(`Достигнут лимит открытий таблиц. ${error.error}`);
+              const message = error.error || "Достигнут лимит открытий таблиц для вашего тарифа.";
+              const fullMessage = error.opens_count !== undefined && error.opens_limit !== undefined
+                ? `${message}\n\nИспользовано: ${error.opens_count} из ${error.opens_limit}\n\nДля увеличения лимита перейдите на более высокий тариф.`
+                : message;
+              setLimitModal({
+                isOpen: true,
+                title: "Лимит открытий таблиц",
+                message: fullMessage,
+                type: "limit",
+              });
               onClose(id);
             }
           }
@@ -157,7 +173,16 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
           });
           
           if (error.limit_reached) {
-            alert(`Достигнут лимит скачиваний. ${error.error}`);
+            const message = error.error || "Достигнут лимит скачиваний для вашего тарифа.";
+            const fullMessage = error.downloads_count !== undefined && error.downloads_limit !== undefined
+              ? `${message}\n\nИспользовано: ${error.downloads_count} из ${error.downloads_limit}\n\nДля увеличения лимита перейдите на более высокий тариф.`
+              : message;
+            setLimitModal({
+              isOpen: true,
+              title: "Лимит скачиваний",
+              message: fullMessage,
+              type: "limit",
+            });
             return;
           }
           
@@ -171,7 +196,12 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
     } catch (err: any) {
       console.error('Ошибка проверки лимита скачивания:', err);
       const errorMessage = err?.message || 'Ошибка проверки лимита скачивания';
-      alert(`Ошибка: ${errorMessage}. Проверьте логи сервера для деталей.`);
+      setLimitModal({
+        isOpen: true,
+        title: "Ошибка",
+        message: `${errorMessage}. Проверьте логи сервера для деталей.`,
+        type: "error",
+      });
       return;
     }
 
@@ -384,7 +414,16 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
         if (!response.ok) {
           const error = await response.json();
           if (error.limit_reached) {
-            alert(`Достигнут лимит скачиваний. ${error.error}`);
+            const message = error.error || "Достигнут лимит скачиваний для вашего тарифа.";
+            const fullMessage = error.downloads_count !== undefined && error.downloads_limit !== undefined
+              ? `${message}\n\nИспользовано: ${error.downloads_count} из ${error.downloads_limit}\n\nДля увеличения лимита перейдите на более высокий тариф.`
+              : message;
+            setLimitModal({
+              isOpen: true,
+              title: "Лимит скачиваний",
+              message: fullMessage,
+              type: "limit",
+            });
             return;
           }
         } else {
@@ -523,7 +562,8 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
     const csv = [headers, ...dataRows].join("\n");
     
     navigator.clipboard.writeText(csv);
-    alert("Данные скопированы в буфер обмена!");
+    // Уведомление о копировании можно показать через toast, если он доступен
+    // Для простоты оставляем без уведомления или можно добавить визуальный индикатор
   };
 
   // Закрытие меню при клике вне его
@@ -1179,6 +1219,15 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
           </table>
         </div>
       </div>
+
+      {/* Модальное окно для уведомлений о лимитах */}
+      <LimitModal
+        isOpen={limitModal.isOpen}
+        onClose={() => setLimitModal({ ...limitModal, isOpen: false })}
+        title={limitModal.title}
+        message={limitModal.message}
+        type={limitModal.type}
+      />
     </div>
   );
 }
