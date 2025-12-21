@@ -1,10 +1,56 @@
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Testing
+coverage
+*.log
+
+# Next.js
 .next
+out
+build
+dist
+
+# Production
 .vercel
+
+# Environment variables (ВАЖНО: защита секретов!)
 .env
 .env.*
-.DS_Store
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
+
+# OS
+.DS_Store
+*.pem
+Thumbs.db
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+debug_log.txt
+
+# Snapshots (опционально, можно включить если нужны)
+# snapshots/
+
+# Supabase local
+.supabase
