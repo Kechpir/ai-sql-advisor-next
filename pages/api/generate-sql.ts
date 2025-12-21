@@ -270,9 +270,17 @@ SQL запрос:`;
             }
 
             // Используем RPC функцию для атомарного обновления
+            console.log(`[generate-sql] Вызов add_user_tokens: userId=${userId}, tokensToAdd=${tokensUsed}`);
             const { data: rpcData, error: rpcError } = await supabase.rpc("add_user_tokens", {
               user_uuid: userId,
               tokens_to_add: tokensUsed,
+            });
+
+            console.log(`[generate-sql] Результат add_user_tokens:`, {
+              hasData: !!rpcData,
+              data: rpcData,
+              hasError: !!rpcError,
+              error: rpcError
             });
 
             if (rpcError) {

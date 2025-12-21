@@ -198,6 +198,51 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
     
     console.log('✅ Supabase успешно обработал запрос');
     const data = await r.json();
+    
+    console.log('[generateSql] Ответ от Supabase:', {
+      hasSql: !!data.sql,
+      hasUsage: !!data.usage,
+      usage: data.usage,
+      hasTokensUsed: !!data.tokens_used
+    });
+    
+    // Обновляем токены, если они были использованы
+    // Supabase Edge Function может вернуть usage или tokens_used
+    const tokensUsed = data.usage?.total_tokens || data.tokens_used || 0;
+    
+    if (tokensUsed > 0 && jwt && isValidJWT(jwt)) {
+      try {
+        console.log(`[generateSql] Обновление токенов через API: ${tokensUsed} токенов`);
+        const updateResponse = await fetch('/api/update-tokens', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`,
+          },
+          body: JSON.stringify({
+            tokens_used: tokensUsed,
+          }),
+        });
+        
+        if (updateResponse.ok) {
+          const updateData = await updateResponse.json();
+          console.log('✅ Токены обновлены после Supabase генерации:', updateData);
+        } else {
+          const errorData = await updateResponse.json().catch(() => ({ error: 'Unknown error' }));
+          console.warn('⚠️ Ошибка обновления токенов после Supabase:', errorData);
+        }
+      } catch (tokenUpdateError: any) {
+        console.warn('⚠️ Ошибка обновления токенов после Supabase:', tokenUpdateError?.message || tokenUpdateError);
+        // Не блокируем ответ, если обновление токенов не удалось
+      }
+    } else {
+      console.log('[generateSql] Пропуск обновления токенов:', {
+        tokensUsed,
+        hasJWT: !!jwt,
+        isValidJWT: jwt ? isValidJWT(jwt) : false
+      });
+    }
+    
     // Отправляем событие для обновления счетчика токенов на фронте
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('sql-generated'));

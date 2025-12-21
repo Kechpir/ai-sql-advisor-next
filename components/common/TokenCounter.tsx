@@ -16,7 +16,6 @@ export default function TokenCounter() {
   const [purchasedTokens, setPurchasedTokens] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
   const fetchTokenUsage = async (showRefreshing = false) => {
@@ -79,42 +78,6 @@ export default function TokenCounter() {
     } finally {
       setLoading(false);
       setRefreshing(false);
-    }
-  };
-
-  const testTokenUpdate = async () => {
-    setTesting(true);
-    try {
-      const jwt = localStorage.getItem('jwt');
-      if (!jwt) {
-        alert('Не авторизован! Войдите в систему.');
-        return;
-      }
-
-      const response = await fetch('/api/test-token-update?tokens=1000', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${jwt}`,
-        },
-      });
-
-      const data = await response.json();
-      if (response.ok) {
-        console.log('✅ Тест успешен:', data);
-        alert(`✅ Токены добавлены!\nБыло: ${data.previous}\nДобавлено: ${data.added}\nСтало: ${data.newTotal}`);
-        // Принудительно обновляем счетчик несколько раз (на случай задержки БД)
-        fetchTokenUsage(true); // Сразу с индикацией
-        setTimeout(() => fetchTokenUsage(true), 500); // Через 0.5 сек
-        setTimeout(() => fetchTokenUsage(true), 1500); // Через 1.5 сек (на случай задержки БД)
-      } else {
-        console.error('❌ Ошибка теста:', data);
-        alert(`❌ Ошибка: ${data.error}\n\nПроверьте консоль для деталей.`);
-      }
-    } catch (err: any) {
-      console.error('Ошибка теста:', err);
-      alert(`❌ Ошибка: ${err.message}`);
-    } finally {
-      setTesting(false);
     }
   };
 
@@ -214,27 +177,6 @@ export default function TokenCounter() {
         >
           ⚠️
         </span>
-      )}
-      {/* Кнопка для тестирования (только в dev режиме) */}
-      {process.env.NODE_ENV === 'development' && (
-        <button
-          onClick={testTokenUpdate}
-          disabled={testing}
-          style={{
-            marginLeft: '0.5rem',
-            padding: '0.2rem 0.5rem',
-            fontSize: '0.7rem',
-            background: testing ? 'var(--border)' : 'rgba(34, 211, 238, 0.2)',
-            border: '1px solid var(--accent)',
-            borderRadius: '4px',
-            color: 'var(--accent)',
-            cursor: testing ? 'not-allowed' : 'pointer',
-            opacity: testing ? 0.5 : 1,
-          }}
-          title="Тест: добавить 1000 токенов"
-        >
-          {testing ? '⏳' : '🧪'}
-        </button>
       )}
     </div>
   );

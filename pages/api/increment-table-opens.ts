@@ -19,13 +19,26 @@ function setCorsHeaders(res: NextApiResponse, origin: string | undefined) {
 
 // Извлечение user_id из JWT токена
 function getUserIdFromJWT(jwt: string | null): string | null {
-  if (!jwt) return null;
+  if (!jwt) {
+    console.warn('[increment-table-opens] JWT токен отсутствует');
+    return null;
+  }
   try {
     const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-    return payload?.sub ?? null;
-  } catch {
+    if (parts.length !== 3) {
+      console.warn('[increment-table-opens] JWT имеет неверный формат (не 3 части)');
+      return null;
+    }
+    // Безопасное декодирование base64
+    const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf-8'));
+    const userId = payload?.sub ?? null;
+    if (!userId) {
+      console.warn('[increment-table-opens] JWT не содержит sub (user_id)');
+    }
+    return userId;
+  } catch (err: any) {
+    console.warn('[increment-table-opens] Ошибка декодирования JWT:', err?.message || String(err));
     return null;
   }
 }
@@ -47,7 +60,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const jwt = authHeader?.replace(/^Bearer /i, '') || null;
   const userId = getUserIdFromJWT(jwt);
 
+  console.log('[increment-table-opens] Авторизация:', {
+    hasAuthHeader: !!authHeader,
+    hasJWT: !!jwt,
+    jwtLength: jwt?.length || 0,
+    userId: userId || 'не найден'
+  });
+
   if (!userId) {
+    console.error('[increment-table-opens] Пользователь не авторизован');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     return res.status(401).json({ error: "Не авторизован" });
   }
@@ -59,27 +80,62 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/\s+/g, '');
     const serviceKey = (process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY)?.trim().replace(/\s+/g, '');
     
-    if (!supabaseUrl && (!anonKey || !serviceKey)) {
-      return res.status(500).json({ error: "Supabase не настроен" });
+    console.log('[increment-table-opens] Настройки:', {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasAnonKey: !!anonKey,
+      hasServiceKey: !!serviceKey,
+      userId: userId,
+      isDownload: is_download
+    });
+    
+    if (!supabaseUrl) {
+      console.error('[increment-table-opens] NEXT_PUBLIC_SUPABASE_URL не настроен');
+      return res.status(500).json({ error: "NEXT_PUBLIC_SUPABASE_URL не настроен" });
+    }
+    
+    if (!anonKey && !serviceKey) {
+      console.error('[increment-table-opens] Нет ни ANON_KEY, ни SERVICE_KEY');
+      return res.status(500).json({ error: "Supabase ключи не настроены" });
     }
 
+    // Используем anon key с JWT для работы с RLS, если есть JWT
+    // Иначе используем service key
+    const useAnonKey = jwt && anonKey;
+    const supabaseKey = useAnonKey ? anonKey! : (serviceKey || anonKey!);
+    
+    console.log('[increment-table-opens] Создание Supabase клиента:', {
+      useAnonKey: useAnonKey,
+      hasJWT: !!jwt,
+      keyType: useAnonKey ? 'anon' : (serviceKey ? 'service' : 'anon')
+    });
+    
     const supabase = createClient(
       supabaseUrl!,
-      serviceKey || anonKey!,
+      supabaseKey,
       {
         auth: {
           persistSession: false,
           autoRefreshToken: false,
         },
         global: {
-          ...(jwt && anonKey ? { headers: { 'Authorization': `Bearer ${jwt}` } } : {})
+          ...(jwt && useAnonKey ? { headers: { 'Authorization': `Bearer ${jwt}` } } : {})
         }
       }
     );
 
     // Сначала проверяем лимит
+    console.log('[increment-table-opens] Вызов check_table_opens_limit с userId:', userId);
     const { data: limitCheck, error: limitError } = await supabase.rpc('check_table_opens_limit', {
       user_uuid: userId
+    });
+
+    console.log('[increment-table-opens] Результат check_table_opens_limit:', {
+      hasData: !!limitCheck,
+      dataType: typeof limitCheck,
+      isArray: Array.isArray(limitCheck),
+      data: limitCheck,
+      hasError: !!limitError,
+      error: limitError
     });
 
     if (limitError) {
@@ -120,9 +176,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Увеличиваем счетчик
+    console.log('[increment-table-opens] Вызов increment_table_opens с userId:', userId, 'isDownload:', isDownload);
     const { data: newCount, error: incrementError } = await supabase.rpc('increment_table_opens', {
       user_uuid: userId,
       is_download: isDownload
+    });
+
+    console.log('[increment-table-opens] Результат increment_table_opens:', {
+      hasData: !!newCount,
+      dataType: typeof newCount,
+      isArray: Array.isArray(newCount),
+      data: newCount,
+      hasError: !!incrementError,
+      error: incrementError
     });
 
     if (incrementError) {

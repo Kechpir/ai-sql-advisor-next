@@ -143,20 +143,35 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
         });
 
         if (!response.ok) {
-          const error = await response.json();
+          let error;
+          try {
+            error = await response.json();
+          } catch {
+            error = { error: `HTTP ${response.status}: ${response.statusText}` };
+          }
+          
+          console.error('[downloadFile] Ошибка от API:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: error
+          });
+          
           if (error.limit_reached) {
             alert(`Достигнут лимит скачиваний. ${error.error}`);
             return;
           }
-          throw new Error(error.error || 'Ошибка проверки лимита');
+          
+          const errorMessage = error.error || error.details || `Ошибка проверки лимита (${response.status})`;
+          throw new Error(errorMessage);
         }
 
         // Обновляем счетчик токенов после скачивания
         window.dispatchEvent(new Event('sql-generated'));
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Ошибка проверки лимита скачивания:', err);
-      alert('Ошибка проверки лимита скачивания. Попробуйте позже.');
+      const errorMessage = err?.message || 'Ошибка проверки лимита скачивания';
+      alert(`Ошибка: ${errorMessage}. Проверьте логи сервера для деталей.`);
       return;
     }
 
