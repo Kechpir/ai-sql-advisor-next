@@ -53,9 +53,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json({ error: "Метод не поддерживается (требуется POST)" });
   }
 
-  // Обертка для перехвата всех ошибок
-  try {
-
   // Безопасное чтение тела запроса
   let body;
   try {
@@ -351,15 +348,21 @@ SQL запрос:`;
       usage, // Возвращаем информацию об использовании токенов
       tokens_used: tokensUsed, // Добавляем информацию о потраченных токенах
     });
-    
-    return response;
   } catch (err: any) {
-    console.error("Ошибка генерации SQL:", err);
-    const errorMessage = err?.message || "Ошибка генерации SQL";
-    // Убеждаемся, что ошибка правильно сериализуется в JSON
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    return res.status(500).json({
-      error: String(errorMessage),
+    console.error("[generate-sql] Ошибка генерации SQL:", err);
+    console.error("[generate-sql] Stack:", err?.stack);
+    console.error("[generate-sql] Детали:", {
+      message: err?.message,
+      code: err?.code,
+      name: err?.name,
     });
+    
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.status(500).json({
+        error: String(err?.message || "Ошибка генерации SQL"),
+        details: process.env.NODE_ENV === 'development' ? err?.stack : undefined
+      });
+    }
   }
 }

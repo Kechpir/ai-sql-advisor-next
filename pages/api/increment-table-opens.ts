@@ -156,11 +156,22 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       limits: updatedLimitData || limit
     });
   } catch (err: any) {
-    console.error("Ошибка увеличения счетчика:", err);
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    return res.status(500).json({
-      error: String(err?.message || "Ошибка увеличения счетчика")
+    console.error("[increment-table-opens] Критическая ошибка:", err);
+    console.error("[increment-table-opens] Stack:", err?.stack);
+    console.error("[increment-table-opens] Детали:", {
+      message: err?.message,
+      code: err?.code,
+      name: err?.name,
+      userId: userId,
     });
+    
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.status(500).json({
+        error: String(err?.message || "Ошибка увеличения счетчика"),
+        details: process.env.NODE_ENV === 'development' ? err?.stack : undefined
+      });
+    }
   }
 }
 

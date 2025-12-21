@@ -8,6 +8,7 @@ interface Connection {
   user: string;
   password: string;
   dialect: string;
+  connectionString?: string; // Для хранения полной строки подключения из Supabase
 }
 
 interface Props {
@@ -30,10 +31,74 @@ export default function ConnectionsPanel({ onConnect }: Props) {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Загружаем сохранённые соединения
+  // Загружаем сохранённые соединения из Supabase
   useEffect(() => {
-    const saved = localStorage.getItem("savedConnections");
-    if (saved) setConnections(JSON.parse(saved));
+    const loadConnections = async () => {
+      const jwt = localStorage.getItem('jwt');
+      if (!jwt) {
+        // Fallback на localStorage, если нет авторизации
+        const saved = localStorage.getItem("savedConnections");
+        if (saved) setConnections(JSON.parse(saved));
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/save-connection', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`,
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.connections) {
+            // Преобразуем формат из API в формат Connection
+            const formattedConnections: Connection[] = data.connections.map((conn: any) => {
+              let parsed: any = {
+                host: conn.host || '',
+                port: '5432',
+                database: conn.database || '',
+                user: '',
+                password: '', // Пароль не извлекаем для безопасности
+                dialect: conn.dbType || 'postgres',
+              };
+              
+              try {
+                if (conn.connectionString) {
+                  const url = new URL(conn.connectionString);
+                  parsed = {
+                    host: url.hostname || conn.host || '',
+                    port: url.port || '5432',
+                    database: url.pathname.replace('/', '') || conn.database || '',
+                    user: url.username || '',
+                    password: '', // Пароль не извлекаем
+                    dialect: conn.dbType || 'postgres',
+                  };
+                }
+              } catch {
+                // Если не удалось распарсить, используем данные из БД
+              }
+              
+              return {
+                name: conn.name,
+                ...parsed,
+                connectionString: conn.connectionString, // Сохраняем для прямого использования
+              };
+            });
+            setConnections(formattedConnections);
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки подключений:', err);
+        // Fallback на localStorage
+        const saved = localStorage.getItem("savedConnections");
+        if (saved) setConnections(JSON.parse(saved));
+      }
+    };
+
+    loadConnections();
   }, []);
 
   // Закрываем дропдаун при клике вне его
@@ -53,9 +118,51 @@ export default function ConnectionsPanel({ onConnect }: Props) {
     };
   }, [dropdownOpen]);
 
-  const saveConnections = (list: Connection[]) => {
+  const saveConnections = async (list: Connection[]) => {
+    const jwt = localStorage.getItem('jwt');
+    
+    // Сохраняем в localStorage для fallback
     localStorage.setItem("savedConnections", JSON.stringify(list));
     setConnections(list);
+
+    // Сохраняем в Supabase, если авторизован
+    if (!jwt) return;
+
+    try {
+      // Сохраняем каждое подключение
+      for (const conn of list) {
+        // Формируем connection string
+        let connectionString = '';
+        const dialect = conn.dialect.toLowerCase();
+        const port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+        const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
+        
+        if (dialect === "postgres" || dialect === "postgresql") {
+          connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        } else if (dialect === "mysql") {
+          connectionString = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
+        } else if (dialect === "sqlite") {
+          connectionString = `file:${conn.database}`;
+        } else {
+          connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        }
+
+        await fetch('/api/save-connection', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`,
+          },
+          body: JSON.stringify({
+            name: conn.name,
+            connectionString: connectionString,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error('Ошибка сохранения подключений в Supabase:', err);
+      // Игнорируем ошибку, так как уже сохранили в localStorage
+    }
   };
 
   const handleAdd = () => {
@@ -73,28 +180,45 @@ export default function ConnectionsPanel({ onConnect }: Props) {
     });
   };
 
-  const handleDelete = (name: string) => {
+  const handleDelete = async (name: string) => {
     const filtered = connections.filter((c) => c.name !== name);
     saveConnections(filtered);
+    
+    // Удаляем из Supabase
+    const jwt = localStorage.getItem('jwt');
+    if (jwt) {
+      try {
+        await fetch(`/api/save-connection?name=${encodeURIComponent(name)}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${jwt}`,
+          },
+        });
+      } catch (err) {
+        console.error('Ошибка удаления подключения из Supabase:', err);
+      }
+    }
   };
 
   const connect = (conn: Connection) => {
-    // Формируем правильную строку подключения в зависимости от диалекта
-    let url = "";
-    const dialect = conn.dialect.toLowerCase();
+    // Если есть сохраненный connection string, используем его напрямую
+    let url = conn.connectionString || "";
     
-    if (dialect === "postgres" || dialect === "postgresql") {
-      url = `postgresql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}?sslmode=require`;
-    } else if (dialect === "mysql") {
-      url = `mysql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}`;
-    } else if (dialect === "sqlite") {
-      url = `file:${conn.database}`;
-    } else if (dialect === "mssql") {
-      // MSSQL использует другой формат
-      url = `mssql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}`;
-    } else {
-      // По умолчанию PostgreSQL
-      url = `postgresql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}?sslmode=require`;
+    // Если connection string нет, формируем его из полей
+    if (!url) {
+      const dialect = conn.dialect.toLowerCase();
+      
+      if (dialect === "postgres" || dialect === "postgresql") {
+        url = `postgresql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}?sslmode=require`;
+      } else if (dialect === "mysql") {
+        url = `mysql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}`;
+      } else if (dialect === "sqlite") {
+        url = `file:${conn.database}`;
+      } else if (dialect === "mssql") {
+        url = `mssql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}`;
+      } else {
+        url = `postgresql://${conn.user}:${encodeURIComponent(conn.password)}@${conn.host}:${conn.port}/${conn.database}?sslmode=require`;
+      }
     }
     
     onConnect?.(url);

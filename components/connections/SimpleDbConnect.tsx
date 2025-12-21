@@ -115,23 +115,27 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
     try {
       // Сохраняем каждое подключение
       for (const conn of list) {
-        // Формируем connection string
-        let connectionString = '';
-        const dialect = conn.dialect.toLowerCase();
-        const port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
-        const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
+        // Используем connection string из объекта, если есть, иначе формируем
+        let connectionString = conn.connectionString || '';
         
-        if (dialect === "postgres" || dialect === "postgresql") {
-          connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
-        } else if (dialect === "mysql") {
-          connectionString = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
-        } else if (dialect === "sqlite") {
-          connectionString = `file:${conn.database}`;
-        } else {
-          connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        if (!connectionString) {
+          // Формируем connection string
+          const dialect = conn.dialect.toLowerCase();
+          const port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+          const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
+          
+          if (dialect === "postgres" || dialect === "postgresql") {
+            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+          } else if (dialect === "mysql") {
+            connectionString = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
+          } else if (dialect === "sqlite") {
+            connectionString = `file:${conn.database}`;
+          } else {
+            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+          }
         }
 
-        await fetch('/api/save-connection', {
+        const res = await fetch('/api/save-connection', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -142,6 +146,11 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
             connectionString: connectionString,
           }),
         });
+
+        if (!res.ok) {
+          const error = await res.json().catch(() => ({ error: 'Unknown error' }));
+          console.error(`Ошибка сохранения подключения ${conn.name}:`, error);
+        }
       }
     } catch (err) {
       console.error('Ошибка сохранения подключений в Supabase:', err);
@@ -149,13 +158,34 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
     }
   };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!newConn.name || !newConn.host || !newConn.database) {
       onToast("warn", "❗ Заполни обязательные поля");
       return;
     }
-    const updated = [...connections, newConn];
-    saveConnections(updated);
+    
+    // Формируем connection string для сохранения
+    let connectionString = '';
+    const dialect = newConn.dialect.toLowerCase();
+    const portValue = newConn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+    const passwordEncoded = newConn.password ? `:${encodeURIComponent(newConn.password)}` : "";
+    
+    if (dialect === "postgres" || dialect === "postgresql") {
+      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?sslmode=require`;
+    } else if (dialect === "mysql") {
+      connectionString = `mysql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}`;
+    } else if (dialect === "sqlite") {
+      connectionString = `file:${newConn.database}`;
+    } else {
+      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?sslmode=require`;
+    }
+    
+    // Сохраняем connection string в объекте подключения
+    const connWithString = { ...newConn, connectionString };
+    const updated = [...connections.filter((c) => c.name !== newConn.name), connWithString];
+    
+    await saveConnections(updated);
+    
     setNewConn({
       name: "",
       host: "",

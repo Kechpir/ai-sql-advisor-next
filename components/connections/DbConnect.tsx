@@ -32,8 +32,71 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
     "https://zaheofzxbfqabdxdmjtz.supabase.co/functions/v1/fetch_schema";
 
   useEffect(() => {
-    const stored = localStorage.getItem("savedConnections");
-    if (stored) setSavedConnections(JSON.parse(stored));
+    const loadConnections = async () => {
+      const jwt = localStorage.getItem('jwt');
+      if (!jwt) {
+        // Fallback на localStorage, если нет авторизации
+        const stored = localStorage.getItem("savedConnections");
+        if (stored) setSavedConnections(JSON.parse(stored));
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/save-connection', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`,
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.connections) {
+            // Преобразуем формат из API в формат SavedConnection
+            const formattedConnections: SavedConnection[] = data.connections.map((conn: any) => {
+              let parsed: any = {
+                host: conn.host || '',
+                port: '5432',
+                database: conn.database || '',
+                user: '',
+                password: '',
+                dialect: conn.dbType || 'postgres',
+              };
+              
+              try {
+                if (conn.connectionString) {
+                  const url = new URL(conn.connectionString);
+                  parsed = {
+                    host: url.hostname || conn.host || '',
+                    port: url.port || '5432',
+                    database: url.pathname.replace('/', '') || conn.database || '',
+                    user: url.username || '',
+                    password: '',
+                    dialect: conn.dbType || 'postgres',
+                  };
+                }
+              } catch {
+                // Если не удалось распарсить, используем данные из БД
+              }
+              
+              return {
+                name: conn.name,
+                ...parsed,
+              };
+            });
+            setSavedConnections(formattedConnections);
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки подключений:', err);
+        // Fallback на localStorage
+        const stored = localStorage.getItem("savedConnections");
+        if (stored) setSavedConnections(JSON.parse(stored));
+      }
+    };
+
+    loadConnections();
   }, []);
 
   // Подключение через прямой URL
@@ -98,15 +161,19 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
     }
   };
 
-  const saveConnection = () => {
+  const saveConnection = async () => {
     if (!connName.trim()) return onToast("warn", "Введите имя подключения");
     
-    // Если режим URL и есть URL, пытаемся сохранить его
+    let connectionString = '';
+    let newConn: SavedConnection;
+    
+    // Если режим URL и есть URL, используем его напрямую
     if (mode === "url" && url.trim()) {
+      connectionString = url.trim();
       try {
         // Парсим URL для сохранения в структурированном виде
         const urlObj = new URL(url.trim());
-        const newConn: SavedConnection = {
+        newConn = {
           name: connName,
           dialect: urlObj.protocol.replace(":", ""),
           host: urlObj.hostname,
@@ -115,28 +182,58 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
           user: urlObj.username,
           password: urlObj.password,
         };
-        const updated = [...savedConnections.filter((c) => c.name !== connName), newConn];
-        setSavedConnections(updated);
-        localStorage.setItem("savedConnections", JSON.stringify(updated));
-        onToast("ok", `💾 Сохранено: ${connName}`);
-        setConnName("");
-        return;
       } catch (e) {
         onToast("warn", "Не удалось распарсить URL. Сохраните через форму.");
         return;
       }
+    } else {
+      // Сохранение из формы
+      if (!dialect || !host || !database || !user) {
+        onToast("warn", "Заполни обязательные поля (Диалект, Host, Database, User)");
+        return;
+      }
+      
+      // Формируем connection string
+      const portValue = port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+      const passwordEncoded = password ? `:${encodeURIComponent(password)}` : "";
+      
+      if (dialect === "postgres" || dialect === "postgresql") {
+        connectionString = `postgresql://${user}${passwordEncoded}@${host}:${portValue}/${database}?sslmode=require`;
+      } else if (dialect === "mysql") {
+        connectionString = `mysql://${user}${passwordEncoded}@${host}:${portValue}/${database}`;
+      } else if (dialect === "sqlite") {
+        connectionString = `file:${database}`;
+      } else {
+        connectionString = `postgresql://${user}${passwordEncoded}@${host}:${portValue}/${database}?sslmode=require`;
+      }
+      
+      newConn = { name: connName, host, port, database, user, password, dialect };
     }
     
-    // Сохранение из формы
-    if (!dialect || !host || !database || !user) {
-      onToast("warn", "Заполни обязательные поля (Диалект, Host, Database, User)");
-      return;
-    }
-    
-    const newConn = { name: connName, host, port, database, user, password, dialect };
     const updated = [...savedConnections.filter((c) => c.name !== connName), newConn];
     setSavedConnections(updated);
     localStorage.setItem("savedConnections", JSON.stringify(updated));
+    
+    // Сохраняем в Supabase
+    const jwt = localStorage.getItem('jwt');
+    if (jwt) {
+      try {
+        await fetch('/api/save-connection', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`,
+          },
+          body: JSON.stringify({
+            name: connName,
+            connectionString: connectionString,
+          }),
+        });
+      } catch (err) {
+        console.error('Ошибка сохранения подключения в Supabase:', err);
+      }
+    }
+    
     onToast("ok", `💾 Сохранено: ${connName}`);
     setConnName("");
   };
@@ -157,10 +254,26 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
     onToast("ok", `🔌 Загружено подключение: ${c.name}`);
   };
 
-  const deleteConnection = (name: string) => {
+  const deleteConnection = async (name: string) => {
     const updated = savedConnections.filter((c) => c.name !== name);
     setSavedConnections(updated);
     localStorage.setItem("savedConnections", JSON.stringify(updated));
+    
+    // Удаляем из Supabase
+    const jwt = localStorage.getItem('jwt');
+    if (jwt) {
+      try {
+        await fetch(`/api/save-connection?name=${encodeURIComponent(name)}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${jwt}`,
+          },
+        });
+      } catch (err) {
+        console.error('Ошибка удаления подключения из Supabase:', err);
+      }
+    }
+    
     onToast("ok", `🗑 Удалено: ${name}`);
   };
 
