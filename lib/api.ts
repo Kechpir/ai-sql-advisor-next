@@ -90,14 +90,18 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
     // Нормализуем строку для безопасной обработки
     localApiError = String(errorMessage);
     
-    // Если это ошибка конфигурации (нет API ключа), не пробуем Supabase
-    if (r.status === 500 && String(errorMessage).includes('OPENAI_API_KEY')) {
-      throw new Error(`❌ ${String(errorMessage)}\n\n💡 Решение: Добавьте OPENAI_API_KEY в файл .env.local и перезапустите сервер.`);
-    }
-    
-    // Если локальный API не работает по другой причине, пробуем Supabase только если есть валидный JWT
+    // Если локальный API не работает (включая ошибку OPENAI_API_KEY), пробуем Supabase только если есть валидный JWT
     if (!jwt || !isValidJWT(jwt)) {
       const safeError = String(errorMessage || 'Неизвестная ошибка');
+      // Если это ошибка про OPENAI_API_KEY, даём более понятное сообщение
+      if (r.status === 500 && String(errorMessage).includes('OPENAI_API_KEY')) {
+        throw new Error(
+          `❌ ${String(errorMessage)}\n\n` +
+          `💡 Решение:\n` +
+          `1. Либо настройте OPENAI_API_KEY в .env.local для локального API\n` +
+          `2. Либо войдите в систему через /auth для использования Supabase fallback`
+        );
+      }
       throw new Error(
         `❌ Локальный API недоступен: ${safeError}\n\n` +
         `💡 Решение:\n` +
@@ -106,6 +110,7 @@ export async function generateSql(nl: string, schemaJson: any, dialect: string =
       );
     }
     
+    // Если есть валидный JWT, пробуем Supabase даже при ошибке OPENAI_API_KEY
     console.warn('⚠️ Локальный API не доступен, пробуем Supabase...', errorMessage);
   } catch (localError: any) {
     // Если это уже наша обработанная ошибка, пробрасываем её дальше
