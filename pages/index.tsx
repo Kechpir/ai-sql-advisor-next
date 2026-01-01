@@ -348,12 +348,15 @@ export default function Home() {
       // Генерируем SQL
       setLoading(true);
       setExecutingSql(true);
+      
+      // Формируем запрос с учетом файла
+      let query = nl.trim();
+      if (fileContent) {
+        const fileContext = `\n\nКонтекст из файла "${fileName}":\n${fileContent}`;
+        query = query ? query + fileContext : `Проанализируй содержимое файла и помоги сформировать SQL запросы.${fileContext}`;
+      }
+      
       try {
-        let query = nl.trim();
-        if (fileContent) {
-          const fileContext = `\n\nКонтекст из файла "${fileName}":\n${fileContent}`;
-          query = query ? query + fileContext : `Проанализируй содержимое файла и помоги сформировать SQL запросы.${fileContext}`;
-        }
 
         const data = await generateSql(query, schemaJson, "postgres");
         if (data.blocked) {
