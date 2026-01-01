@@ -3,6 +3,7 @@ import type { NextApiRequest, NextApiResponse } from "next";
 import { Client } from "pg";
 import mysql from "mysql2/promise";
 import { checkAuth, checkConnectionOwnership } from '@/lib/auth';
+import { detectDbType } from '@/lib/db/detectDbType';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Оборачиваем весь handler в try-catch для перехвата любых ошибок
@@ -35,14 +36,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     console.log('[fetch-schema] ✅ Подключение принадлежит пользователю, продолжаем...');
 
-    // Определяем тип БД из строки подключения
-    let dbType = "postgres";
-    if (connectionString.startsWith("mysql://")) dbType = "mysql";
-    else if (connectionString.startsWith("postgres://") || connectionString.startsWith("postgresql://")) dbType = "postgres";
-    else if (connectionString.startsWith("sqlite://") || connectionString.startsWith("file:")) dbType = "sqlite";
+    // Автоматически определяем тип БД из строки подключения
+    const dbInfo = detectDbType(connectionString);
+    const dbType = dbInfo?.type || "postgres";
     
     // НЕ логируем connection strings (безопасность)
-    console.log("Получен запрос на получение схемы:", { dbType });
+    console.log("Получен запрос на получение схемы:", { dbType, displayName: dbInfo?.displayName });
 
     try {
     const schema: Record<string, string[]> = {};
@@ -77,8 +76,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
 
-    // === MySQL ===
-    else if (dbType === "mysql") {
+    // === MySQL / MariaDB ===
+    else if (dbType === "mysql" || dbType === "mariadb") {
       const conn = await mysql.createConnection(connectionString);
       try {
         // Получаем список таблиц
@@ -94,9 +93,47 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         try {
           await conn.end();
         } catch (closeError) {
-          console.error("Ошибка при закрытии соединения MySQL:", closeError);
+          console.error(`Ошибка при закрытии соединения ${dbInfo?.displayName || 'MySQL'}:`, closeError);
         }
       }
+    }
+    
+    // === CockroachDB (PostgreSQL совместимый) ===
+    else if (dbType === "cockroachdb") {
+      const client = new Client({ connectionString });
+      try {
+        await client.connect();
+
+        const query = `
+          SELECT
+            table_name,
+            column_name,
+            data_type
+          FROM information_schema.columns
+          WHERE table_schema = 'public'
+          ORDER BY table_name, ordinal_position;
+        `;
+
+        const result = await client.query(query);
+        result.rows.forEach((row) => {
+          if (!schema[row.table_name]) schema[row.table_name] = [];
+          schema[row.table_name].push(row.column_name);
+        });
+      } finally {
+        try {
+          await client.end();
+        } catch (closeError) {
+          console.error("Ошибка при закрытии соединения CockroachDB:", closeError);
+        }
+      }
+    }
+    
+    // === Неподдерживаемый тип БД ===
+    else {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Неподдерживаемый тип базы данных: ${dbInfo?.displayName || dbType}. Поддерживаются: PostgreSQL, MySQL, MariaDB, SQLite, CockroachDB` 
+      });
     }
 
     // === SQLite ===

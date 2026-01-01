@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { detectDbType, parseConnectionString, formatConnectionString, SUPPORTED_DB_TYPES, getDbTypeInfo } from "@/lib/db/detectDbType";
 
 interface Connection {
   name: string;
@@ -66,14 +67,16 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
               
               try {
                 if (conn.connectionString) {
-                  const url = new URL(conn.connectionString);
+                  // Используем утилиту для парсинга connection string
+                  const parsedConn = parseConnectionString(conn.connectionString);
+                  const dbInfo = detectDbType(conn.connectionString);
                   parsed = {
-                    host: url.hostname || conn.host || '',
-                    port: url.port || '5432',
-                    database: url.pathname.replace('/', '') || conn.database || '',
-                    user: url.username || '',
+                    host: parsedConn.host || conn.host || '',
+                    port: parsedConn.port || dbInfo?.defaultPort || '5432',
+                    database: parsedConn.database || conn.database || '',
+                    user: parsedConn.user || '',
                     password: '', // Пароль не извлекаем для безопасности
-                    dialect: conn.dbType || 'postgres',
+                    dialect: parsedConn.type || conn.dbType || dbInfo?.type || 'postgres',
                   };
                 }
               } catch {
@@ -117,27 +120,45 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         let connectionString = conn.connectionString || '';
         
         if (!connectionString) {
-          // Формируем connection string
-          const dialect = conn.dialect.toLowerCase();
-          let port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
-          const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
-          
-          // Для Supabase используем connection pooling (порт 6543)
-          const isSupabase = conn.host.includes('supabase.co');
-          if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
-            port = "6543";
-          }
-          
-          if (dialect === "postgres" || dialect === "postgresql") {
-            const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
-            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
-          } else if (dialect === "mysql") {
-            connectionString = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
-          } else if (dialect === "sqlite") {
-            connectionString = `file:${conn.database}`;
-          } else {
-            const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
-            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
+          // Используем утилиту для форматирования connection string
+          try {
+            const dbInfo = getDbTypeInfo(conn.dialect);
+            let port = conn.port || dbInfo?.defaultPort || "5432";
+            
+            // Для Supabase используем connection pooling (порт 6543)
+            const isSupabase = conn.host.includes('supabase.co');
+            if (isSupabase && (conn.dialect === "postgres" || conn.dialect === "postgresql")) {
+              port = "6543";
+            }
+            
+            connectionString = formatConnectionString(
+              conn.dialect,
+              conn.host,
+              port,
+              conn.database,
+              conn.user,
+              conn.password,
+              isSupabase ? { pgbouncer: "true" } : undefined
+            );
+          } catch (error) {
+            // Fallback на старый метод
+            const dialect = conn.dialect.toLowerCase();
+            let port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+            const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
+            const isSupabase = conn.host.includes('supabase.co');
+            if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
+              port = "6543";
+            }
+            if (dialect === "postgres" || dialect === "postgresql") {
+              const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+              connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
+            } else if (dialect === "mysql" || dialect === "mariadb") {
+              connectionString = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
+            } else if (dialect === "sqlite") {
+              connectionString = `file:${conn.database}`;
+            } else {
+              connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+            }
           }
         }
 
@@ -172,26 +193,44 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
     
     // Формируем connection string для сохранения
     let connectionString = '';
-    const dialect = newConn.dialect.toLowerCase();
-    let portValue = newConn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
-    const passwordEncoded = newConn.password ? `:${encodeURIComponent(newConn.password)}` : "";
-    
-    // Для Supabase используем connection pooling (порт 6543)
-    const isSupabase = newConn.host.includes('supabase.co');
-    if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
-      portValue = "6543";
-    }
-    
-    if (dialect === "postgres" || dialect === "postgresql") {
-      const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
-      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?${sslParam}`;
-    } else if (dialect === "mysql") {
-      connectionString = `mysql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}`;
-    } else if (dialect === "sqlite") {
-      connectionString = `file:${newConn.database}`;
-    } else {
-      const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
-      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?${sslParam}`;
+    try {
+      const dbInfo = getDbTypeInfo(newConn.dialect);
+      let portValue = newConn.port || dbInfo?.defaultPort || "5432";
+      
+      // Для Supabase используем connection pooling (порт 6543)
+      const isSupabase = newConn.host.includes('supabase.co');
+      if (isSupabase && (newConn.dialect === "postgres" || newConn.dialect === "postgresql")) {
+        portValue = "6543";
+      }
+      
+      connectionString = formatConnectionString(
+        newConn.dialect,
+        newConn.host,
+        portValue,
+        newConn.database,
+        newConn.user,
+        newConn.password,
+        isSupabase ? { pgbouncer: "true" } : undefined
+      );
+    } catch (error) {
+      // Fallback на старый метод
+      const dialect = newConn.dialect.toLowerCase();
+      let portValue = newConn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+      const passwordEncoded = newConn.password ? `:${encodeURIComponent(newConn.password)}` : "";
+      const isSupabase = newConn.host.includes('supabase.co');
+      if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
+        portValue = "6543";
+      }
+      if (dialect === "postgres" || dialect === "postgresql") {
+        const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+        connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?${sslParam}`;
+      } else if (dialect === "mysql" || dialect === "mariadb") {
+        connectionString = `mysql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}`;
+      } else if (dialect === "sqlite") {
+        connectionString = `file:${newConn.database}`;
+      } else {
+        connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?sslmode=require`;
+      }
     }
     
     // Сохраняем connection string в объекте подключения
@@ -236,7 +275,7 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
 
   const connect = async (conn: Connection) => {
     // Определяем диалект
-    const dialect = conn.dialect?.toLowerCase() || 'postgres';
+    let dialect = conn.dialect?.toLowerCase() || 'postgres';
     
     // Если есть сохраненный connection string, используем его напрямую
     let url = conn.connectionString || "";
@@ -249,37 +288,63 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         return;
       }
 
-      // Формируем правильную строку подключения в зависимости от диалекта
-      let port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
-      const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
-      
-      // Для Supabase используем connection pooling (порт 6543) вместо прямого подключения
-      // Это решает проблему ENOTFOUND и улучшает производительность
-      const isSupabase = conn.host.includes('supabase.co');
-      if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
-        port = "6543"; // Connection pooling port для Supabase
-      }
-      
-      if (dialect === "postgres" || dialect === "postgresql") {
-        // Для Supabase используем pgbouncer=true, для других - sslmode=require
-        const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
-        url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
-      } else if (dialect === "mysql") {
-        url = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
-      } else if (dialect === "sqlite") {
-        url = `file:${conn.database}`;
-      } else if (dialect === "mssql") {
-        url = `mssql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
-      } else {
-        const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
-        url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
+      try {
+        // Используем утилиту для форматирования connection string
+        const dbInfo = getDbTypeInfo(conn.dialect);
+        let port = conn.port || dbInfo?.defaultPort || "5432";
+        
+        // Для Supabase используем connection pooling (порт 6543)
+        const isSupabase = conn.host.includes('supabase.co');
+        if (isSupabase && (conn.dialect === "postgres" || conn.dialect === "postgresql")) {
+          port = "6543";
+        }
+        
+        url = formatConnectionString(
+          conn.dialect,
+          conn.host,
+          port,
+          conn.database,
+          conn.user,
+          conn.password,
+          isSupabase ? { pgbouncer: "true" } : undefined
+        );
+        
+        // Обновляем диалект на основе сформированной строки
+        const detected = detectDbType(url);
+        if (detected) {
+          dialect = detected.type;
+        }
+      } catch (error) {
+        // Fallback на старый метод
+        let port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+        const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
+        const isSupabase = conn.host.includes('supabase.co');
+        if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
+          port = "6543";
+        }
+        if (dialect === "postgres" || dialect === "postgresql") {
+          const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+          url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
+        } else if (dialect === "mysql" || dialect === "mariadb") {
+          url = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
+        } else if (dialect === "sqlite") {
+          url = `file:${conn.database}`;
+        } else if (dialect === "mssql") {
+          url = `mssql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
+        } else {
+          url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        }
       }
     } else {
+      // Автоматически определяем тип БД из connection string
+      const detected = detectDbType(url);
+      if (detected) {
+        dialect = detected.type;
+      }
+      
       // Исправляем существующий connection string для Supabase
       if (url.includes('supabase.co')) {
-        // Заменяем порт 5432 на 6543 для connection pooling
         url = url.replace(/:5432\//, ':6543/');
-        // Добавляем pgbouncer=true если его нет
         if (!url.includes('pgbouncer=true') && !url.includes('?')) {
           url += '?pgbouncer=true';
         } else if (!url.includes('pgbouncer=true') && url.includes('?')) {
@@ -483,6 +548,42 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         </div>
       </div>
 
+      <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
+        <label style={{ display: "block", marginBottom: "0.35rem", fontSize: "0.85rem", color: "#9ca3af" }}>
+          Или вставьте connection string (автоматическое определение типа БД)
+        </label>
+        <input
+          placeholder="postgresql://user:password@host:port/database"
+          style={{ width: "100%", marginBottom: "0.5rem" }}
+          onPaste={async (e) => {
+            const pastedText = e.clipboardData.getData('text');
+            if (pastedText && (pastedText.includes('://') || pastedText.startsWith('file:'))) {
+              e.preventDefault();
+              try {
+                const parsed = parseConnectionString(pastedText);
+                const dbInfo = detectDbType(pastedText);
+                
+                if (parsed.host || parsed.database) {
+                  setNewConn({
+                    name: newConn.name || dbInfo?.displayName || "Новое подключение",
+                    host: parsed.host || "",
+                    port: parsed.port || dbInfo?.defaultPort || "5432",
+                    database: parsed.database || "",
+                    user: parsed.user || "",
+                    password: parsed.password || "",
+                    dialect: parsed.type || dbInfo?.type || "postgres",
+                    connectionString: pastedText,
+                  });
+                  onToast("ok", `✅ Автоматически определен тип: ${dbInfo?.displayName || "Неизвестно"}`);
+                }
+              } catch (error) {
+                console.error("Ошибка парсинга connection string:", error);
+              }
+            }
+          }}
+        />
+      </div>
+
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
         <input
           placeholder="Имя подключения"
@@ -491,13 +592,21 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         />
         <select
           value={newConn.dialect}
-          onChange={(e) => setNewConn({ ...newConn, dialect: e.target.value })}
+          onChange={(e) => {
+            const selectedDialect = e.target.value;
+            const dbInfo = getDbTypeInfo(selectedDialect);
+            setNewConn({ 
+              ...newConn, 
+              dialect: selectedDialect,
+              port: dbInfo?.defaultPort || newConn.port || "5432"
+            });
+          }}
         >
-          <option value="postgres">PostgreSQL</option>
-          <option value="mysql">MySQL</option>
-          <option value="mssql">MSSQL</option>
-          <option value="oracle">Oracle</option>
-          <option value="sqlite">SQLite</option>
+          {Object.values(SUPPORTED_DB_TYPES).map((dbInfo) => (
+            <option key={dbInfo.type} value={dbInfo.type}>
+              {dbInfo.displayName}
+            </option>
+          ))}
         </select>
 
         <input

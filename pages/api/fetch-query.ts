@@ -31,11 +31,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(403).json({ error: "Доступ запрещен: подключение не принадлежит пользователю" });
   }
 
-  // Определяем тип БД из connectionString, если не указан
-  let detectedDbType = dbType || "postgres";
-  if (connectionString.startsWith("mysql://")) detectedDbType = "mysql";
-  else if (connectionString.startsWith("postgres://") || connectionString.startsWith("postgresql://")) detectedDbType = "postgres";
-  else if (connectionString.startsWith("sqlite://") || connectionString.startsWith("file:")) detectedDbType = "sqlite";
+  // Автоматически определяем тип БД из connectionString, если не указан
+  const { detectDbType } = require('@/lib/db/detectDbType');
+  const dbInfo = detectDbType(connectionString);
+  let detectedDbType = dbType || dbInfo?.type || "postgres";
 
   // Генерируем SQL из jsonQuery, если передан объект, иначе используем готовый query
   let sqlQuery = query;
@@ -85,13 +84,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       await client.end();
     }
 
-    // === MySQL ===
-    else if (detectedDbType === "mysql") {
+    // === MySQL / MariaDB ===
+    else if (detectedDbType === "mysql" || detectedDbType === "mariadb") {
       const conn = await mysql.createConnection(connectionString);
       const [result, fields] = await conn.execute(sqlQuery);
       rows = result as any[];
       columns = fields ? fields.map((f: any) => f.name) : [];
       await conn.end();
+    }
+    
+    // === CockroachDB (PostgreSQL совместимый) ===
+    else if (detectedDbType === "cockroachdb") {
+      const client = new PgClient({ connectionString });
+      await client.connect();
+      const result = await client.query(firstQuery);
+      rows = result.rows || [];
+      columns = result.fields ? result.fields.map((f) => f.name) : [];
+      await client.end();
     }
 
     // === SQLite ===
