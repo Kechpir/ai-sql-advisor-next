@@ -279,23 +279,13 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
     // Если есть сохраненный connection string, используем его напрямую
     let url = conn.connectionString || "";
     
-    // Автоматическое исправление: для Supabase заменяем порт 6543 на 5432
-    // Connection pooling (6543) работает только изнутри Supabase, для локального подключения нужен прямой порт 5432
+    // НЕ исправляем Transaction pooler (порт 6543) - он правильный для serverless/Vercel
+    // Transaction pooler работает извне и идеален для Next.js API routes
+    // Если используется pooler.supabase.com или порт 6543 - оставляем как есть
+    // Исправляем только старые Direct connection строки с db.*.supabase.co:5432, если они не работают
     if (url && url.includes('supabase.co') && url.includes(':6543')) {
-      console.log('[SimpleDbConnect] Автоматическое исправление: заменяем порт 6543 на 5432');
-      url = url
-        .replace(/:6543\//, ':5432/')
-        .replace(/pgbouncer=true/g, 'sslmode=require')
-        .replace(/[?&]pgbouncer=true/g, '')
-        .replace(/\?&/, '?')
-        .replace(/\?$/, '');
-      
-      // Если после удаления pgbouncer не осталось параметров, добавляем sslmode=require
-      if (!url.includes('?')) {
-        url += '?sslmode=require';
-      } else if (!url.includes('sslmode=')) {
-        url += '&sslmode=require';
-      }
+      console.log('[SimpleDbConnect] Используем Transaction pooler (порт 6543) - правильный выбор для serverless');
+      // Оставляем как есть - Transaction pooler работает извне
     }
     
     // Если connection string нет, формируем его из полей
@@ -311,10 +301,12 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         const dbInfo = getDbTypeInfo(conn.dialect);
         let port = conn.port || dbInfo?.defaultPort || "5432";
         
-        // Для локального подключения используем прямой порт 5432
-        // Connection pooling (порт 6543) работает только изнутри Supabase
-        // Пользователь может вручную указать порт 6543, если нужно
-        const isSupabase = conn.host.includes('supabase.co');
+        // Для Supabase используем Transaction pooler (идеален для serverless/Vercel)
+        // Transaction pooler использует порт 6543 или pooler.supabase.com хост
+        const isSupabase = conn.host.includes('supabase.co') || conn.host.includes('pooler.supabase.com');
+        
+        // Если хост содержит pooler, используем Transaction pooler параметры
+        const usePooler = isSupabase && (port === "6543" || conn.host.includes('pooler'));
         
         url = formatConnectionString(
           conn.dialect,
@@ -323,9 +315,8 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
           conn.database,
           conn.user,
           conn.password,
-          // Используем sslmode=require для прямого подключения
-          // pgbouncer=true только если пользователь явно указал порт 6543
-          port === "6543" && isSupabase ? { pgbouncer: "true" } : undefined
+          // Transaction pooler для Supabase (serverless-friendly)
+          usePooler ? { pgbouncer: "true", pool_mode: "transaction" } : undefined
         );
         
         // Обновляем диалект на основе сформированной строки
@@ -450,6 +441,36 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         throw new Error("Схема не получена от сервера");
       }
       
+      // Если сервер вернул исправленный connection string, обновляем сохраненное подключение
+      if (data.correctedConnectionString && data.correctedConnectionString !== url) {
+        console.log('[SimpleDbConnect] Получен исправленный connection string от сервера');
+        onToast("ok", `✅ Подключение автоматически оптимизировано для ${data.provider || 'провайдера'}`);
+        
+        // Обновляем сохраненное подключение с исправленным connection string
+        const updatedConn = { ...conn, connectionString: data.correctedConnectionString };
+        const updatedConnections = connections.map(c => 
+          c.name === conn.name ? updatedConn : c
+        );
+        setConnections(updatedConnections);
+        
+        // Сохраняем исправленный вариант в Supabase
+        try {
+          const saveRes = await fetch("/api/save-connection", {
+            method: "POST",
+            headers,
+            body: JSON.stringify({
+              name: conn.name,
+              connectionString: data.correctedConnectionString,
+            }),
+          });
+          if (saveRes.ok) {
+            console.log('[SimpleDbConnect] Исправленный connection string сохранен');
+          }
+        } catch (saveError) {
+          console.warn('[SimpleDbConnect] Не удалось сохранить исправленный connection string:', saveError);
+        }
+      }
+      
       // Преобразуем схему в формат, который ожидает главная страница
       const schemaData = {
         tables: data.schema || {},
@@ -562,8 +583,12 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
 
       <div style={{ marginTop: "1rem", marginBottom: "1rem" }}>
         <label style={{ display: "block", marginBottom: "0.35rem", fontSize: "0.85rem", color: "#9ca3af" }}>
-          Или вставьте connection string (автоматическое определение типа БД)
+          💡 Или вставьте connection string (автоматическое определение и исправление)
         </label>
+        <div style={{ fontSize: "0.75rem", color: "#6b7280", marginBottom: "0.5rem", padding: "0.5rem", background: "#1f293720", borderRadius: "6px" }}>
+          <strong>Поддерживаемые провайдеры:</strong> Supabase, Neon, AWS RDS, Azure, GCP, Railway, Render и другие.<br/>
+          Система автоматически определит тип БД и исправит connection string для оптимальной работы.
+        </div>
         <input
           placeholder="postgresql://user:password@host:port/database"
           style={{ width: "100%", marginBottom: "0.5rem" }}

@@ -171,13 +171,16 @@ export function formatConnectionString(
   switch (dbInfo.type) {
     case 'postgres':
     case 'cockroachdb':
-      // Для Supabase: pgbouncer=true только если порт 6543, иначе sslmode=require
-      // Учитываем переданные options (могут переопределить)
+      // Для Supabase используем Transaction pooler (идеален для serverless)
+      // Transaction pooler использует параметры: pgbouncer=true и pool_mode=transaction
       let sslParam = 'sslmode=require';
-      if (host.includes('supabase.co')) {
-        if (portValue === '6543') {
-          sslParam = 'pgbouncer=true';
-        } else {
+      if (host.includes('supabase.co') || host.includes('pooler.supabase.com')) {
+        // Для Supabase pooler используем правильные параметры
+        if (portValue === '6543' || host.includes('pooler')) {
+          // Transaction pooler для serverless (Vercel)
+          sslParam = 'pgbouncer=true&pool_mode=transaction';
+        } else if (portValue === '5432') {
+          // Direct connection (если используется)
           sslParam = 'sslmode=require';
         }
       }

@@ -182,7 +182,7 @@ export default function Home() {
   const [note, setNote] = useState<{ type: "ok" | "warn" | "err"; text: string } | null>(null);
   const toast = (type: "ok" | "warn" | "err", text: string) => {
     setNote({ type, text });
-    setTimeout(() => setNote(null), 2200);
+    // Убрано автоматическое закрытие - пользователь закрывает вручную
   };
 
   /* -------------------- ACTIONS -------------------- */
@@ -1180,10 +1180,51 @@ export default function Home() {
             }`,
             color: "#e5e7eb",
             padding: "10px 12px",
+            paddingRight: "32px",
             borderRadius: 10,
+            maxWidth: "400px",
+            fontSize: "0.875rem",
+            lineHeight: "1.4",
+            boxShadow: "0 4px 12px rgba(0, 0, 0, 0.3)",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "8px",
           }}
         >
-          {note.text}
+          <span style={{ flex: 1, wordBreak: "break-word" }}>{note.text}</span>
+          <button
+            onClick={() => setNote(null)}
+            style={{
+              position: "absolute",
+              top: "6px",
+              right: "6px",
+              background: "transparent",
+              border: "none",
+              color: "#9ca3af",
+              cursor: "pointer",
+              padding: "2px 4px",
+              borderRadius: "4px",
+              fontSize: "16px",
+              lineHeight: "1",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: "20px",
+              height: "20px",
+              transition: "all 0.2s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+              e.currentTarget.style.color = "#e5e7eb";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "#9ca3af";
+            }}
+            title="Закрыть"
+          >
+            ×
+          </button>
         </div>
       )}
     </div>

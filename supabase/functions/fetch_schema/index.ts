@@ -165,14 +165,9 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: `Bearer ${jwt}` } },
     });
 
-    // Проверка подписки
-    const subscription = await checkSubscription(sb, uid);
-    if (!subscription.active) {
-      return new Response(JSON.stringify({ error: "Subscription required" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
-    }
+    // Проверка подписки - убрана для fetch_schema, так как это базовая функция
+    // Для других функций (generate_sql, execute_sql) проверка подписки остается
+    // fetch_schema должна работать для всех пользователей, включая free план
 
     // Parse body
     let payload;

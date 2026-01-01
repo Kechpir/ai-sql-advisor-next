@@ -45,7 +45,7 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
 
   const toast = (type: 'ok' | 'warn' | 'err', text: string) => {
     setNote({ type, text })
-    setTimeout(() => setNote(null), 2200)
+    // Убрано автоматическое закрытие - пользователь закрывает вручную
   }
 
   const refresh = async () => {
@@ -163,8 +163,54 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
           position: 'fixed', right: 16, bottom: 16, zIndex: 50,
           background: note.type === 'ok' ? '#10b98120' : note.type === 'warn' ? '#f59e0b20' : '#ef444420',
           border: `1px solid ${note.type === 'ok' ? '#10b98160' : note.type === 'warn' ? '#f59e0b60' : '#ef444460'}`,
-          color: '#e5e7eb', padding: '10px 12px', borderRadius: 10, backdropFilter: 'blur(2px)'
-        }}>{note.text}</div>
+          color: '#e5e7eb', 
+          padding: '10px 12px',
+          paddingRight: '32px',
+          borderRadius: 10, 
+          backdropFilter: 'blur(2px)',
+          maxWidth: '400px',
+          fontSize: '0.875rem',
+          lineHeight: '1.4',
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '8px',
+        }}>
+          <span style={{ flex: 1, wordBreak: 'break-word' }}>{note.text}</span>
+          <button
+            onClick={() => setNote(null)}
+            style={{
+              position: 'absolute',
+              top: '6px',
+              right: '6px',
+              background: 'transparent',
+              border: 'none',
+              color: '#9ca3af',
+              cursor: 'pointer',
+              padding: '2px 4px',
+              borderRadius: '4px',
+              fontSize: '16px',
+              lineHeight: '1',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: '20px',
+              height: '20px',
+              transition: 'all 0.2s',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+              e.currentTarget.style.color = '#e5e7eb';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#9ca3af';
+            }}
+            title="Закрыть"
+          >
+            ×
+          </button>
+        </div>
       )}
 
       <ConfirmModal

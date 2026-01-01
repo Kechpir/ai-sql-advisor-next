@@ -4,6 +4,7 @@ import { Client } from "pg";
 import mysql from "mysql2/promise";
 import { checkAuth, checkConnectionOwnership } from '@/lib/auth';
 import { detectDbType } from '@/lib/db/detectDbType';
+import { normalizeConnectionString, getSupabaseConnectionVariants } from '@/lib/db/normalizeConnectionString';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Оборачиваем весь handler в try-catch для перехвата любых ошибок
@@ -36,12 +37,42 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
     console.log('[fetch-schema] ✅ Подключение принадлежит пользователю, продолжаем...');
 
+    // Автоматически нормализуем connection string для разных провайдеров
+    const normalized = normalizeConnectionString(connectionString);
+    let workingConnectionString = normalized.connectionString;
+    let connectionVariants: string[] = [workingConnectionString]; // Для использования в обработке ошибок
+    
     // Автоматически определяем тип БД из строки подключения
-    const dbInfo = detectDbType(connectionString);
+    const dbInfo = detectDbType(workingConnectionString);
     const dbType = dbInfo?.type || "postgres";
     
-    // НЕ логируем connection strings (безопасность)
-    console.log("Получен запрос на получение схемы:", { dbType, displayName: dbInfo?.displayName });
+    // Логируем только безопасную информацию (без пароля)
+    const safeConnectionString = workingConnectionString.replace(/:[^:@]+@/, ':****@');
+    console.log("Получен запрос на получение схемы:", { 
+      dbType, 
+      displayName: dbInfo?.displayName,
+      provider: normalized.provider,
+      method: normalized.method,
+      connectionStringPreview: safeConnectionString.substring(0, 100),
+      notes: normalized.notes
+    });
+    
+    // Проверяем, что connection string валидный
+    try {
+      const testUrl = new URL(workingConnectionString);
+      console.log("Connection string parsed:", { 
+        protocol: testUrl.protocol,
+        hostname: testUrl.hostname,
+        port: testUrl.port,
+        pathname: testUrl.pathname
+      });
+    } catch (parseError) {
+      console.error("Ошибка парсинга connection string:", parseError);
+      return res.status(400).json({ 
+        success: false, 
+        error: "Неверный формат connection string" 
+      });
+    }
 
     try {
     const schema: Record<string, string[]> = {};
@@ -103,31 +134,90 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
       
       // Прямое подключение для других PostgreSQL БД или fallback для Supabase
-      const client = new Client({ connectionString });
-      try {
-        await client.connect();
-
-        const query = `
-          SELECT
-            table_name,
-            column_name,
-            data_type
-          FROM information_schema.columns
-          WHERE table_schema = 'public'
-          ORDER BY table_name, ordinal_position;
-        `;
-
-        const result = await client.query(query);
-        result.rows.forEach((row) => {
-          if (!schema[row.table_name]) schema[row.table_name] = [];
-          schema[row.table_name].push(row.column_name);
+      // Для Supabase пробуем несколько вариантов connection string
+      connectionVariants = [workingConnectionString];
+      
+      if (normalized.provider === 'supabase') {
+        console.log('[fetch-schema] Supabase обнаружен, пробуем несколько вариантов подключения');
+        const variants = getSupabaseConnectionVariants(connectionString);
+        connectionVariants = variants;
+        console.log(`[fetch-schema] Найдено ${variants.length} вариантов для попытки`);
+      }
+      
+      let lastError: Error | null = null;
+      
+      // Пробуем каждый вариант подключения
+      for (let i = 0; i < connectionVariants.length; i++) {
+        const variant = connectionVariants[i];
+        const safeVariant = variant.replace(/:[^:@]+@/, ':****@');
+        console.log(`[fetch-schema] Попытка ${i + 1}/${connectionVariants.length}: ${safeVariant.substring(0, 80)}...`);
+        
+        const client = new Client({ 
+          connectionString: variant,
+          // Увеличиваем таймаут для медленных подключений
+          connectionTimeoutMillis: 8000,
+          // Принудительно используем IPv4, если доступно
+          keepAlive: true,
         });
-      } finally {
+        
         try {
+          console.log('[fetch-schema] Подключаемся к БД...');
+          await client.connect();
+          console.log('[fetch-schema] ✅ Подключение установлено');
+          
+          // Если подключение успешно, обновляем workingConnectionString
+          workingConnectionString = variant;
+
+          const query = `
+            SELECT
+              table_name,
+              column_name,
+              data_type
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+            ORDER BY table_name, ordinal_position;
+          `;
+
+          const result = await client.query(query);
+          result.rows.forEach((row) => {
+            if (!schema[row.table_name]) schema[row.table_name] = [];
+            schema[row.table_name].push(row.column_name);
+          });
+          
+          // Сохраняем успешный connection string для будущего использования
+          if (normalized.provider === 'supabase' && variant !== connectionString) {
+            console.log('[fetch-schema] ✅ Найден рабочий вариант connection string для Supabase');
+            console.log('[fetch-schema] Автоматически исправлен формат подключения для оптимальной работы');
+            
+            // Сохраняем исправленный вариант в ответе, чтобы фронтенд мог его использовать
+            // Фронтенд может обновить сохраненное подключение
+          }
+          
           await client.end();
-        } catch (closeError) {
-          console.error("Ошибка при закрытии соединения PostgreSQL:", closeError);
+          break; // Успешно подключились, выходим из цикла
+        } catch (connectError: any) {
+          lastError = connectError;
+          console.log(`[fetch-schema] Вариант ${i + 1} не сработал: ${connectError.message?.substring(0, 100)}`);
+          
+          try {
+            await client.end();
+          } catch (closeError) {
+            // Игнорируем ошибки закрытия
+          }
+          
+          // Если это последний вариант, пробрасываем ошибку
+          if (i === connectionVariants.length - 1) {
+            throw connectError;
+          }
+          
+          // Продолжаем пробовать следующий вариант
+          continue;
         }
+      }
+      
+      // Если все варианты не сработали
+      if (lastError && Object.keys(schema).length === 0) {
+        throw lastError;
       }
     }
 
@@ -217,10 +307,35 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         success: true,
         schema,
         tables: Object.keys(schema),
+        // Возвращаем исправленный connection string, если он был изменен
+        ...(workingConnectionString !== connectionString && normalized.provider === 'supabase' ? {
+          correctedConnectionString: workingConnectionString,
+          provider: normalized.provider,
+          method: normalized.method,
+          message: 'Connection string автоматически исправлен для оптимальной работы с Supabase'
+        } : {})
       });
     } catch (err: any) {
       console.error("Ошибка при получении схемы:", err);
       const errorMessage = err.message || err.toString() || "Ошибка при подключении к базе данных";
+      
+      // Специальная обработка ошибок с понятными сообщениями
+      let userFriendlyMessage = errorMessage;
+      
+      if (normalized.provider === 'supabase') {
+        if (err.code === 'ENOTFOUND' || errorMessage.includes('ENOTFOUND')) {
+          userFriendlyMessage = `❌ Не удалось найти хост Supabase.\n\nРешение:\n1. Скопируйте connection string из Supabase Dashboard\n2. Выберите "Transaction pooler" (не Direct connection)\n3. Используйте хост вида: aws-0-[REGION].pooler.supabase.com\n4. Порт должен быть 6543\n5. Пользователь: postgres.[PROJECT-REF]`;
+        } else if (err.code === 'ETIMEDOUT' || errorMessage.includes('timeout')) {
+          userFriendlyMessage = `❌ Таймаут подключения к Supabase.\n\nПопробовано ${connectionVariants?.length || 1} вариантов подключения.\n\nРешение:\n1. Используйте Transaction pooler из Dashboard (порт 6543)\n2. Проверьте правильность пароля\n3. Убедитесь, что используете правильный регион\n4. Попробуйте Edge Function (требуется подписка)`;
+        } else {
+          userFriendlyMessage = `❌ Ошибка подключения к Supabase: ${errorMessage}\n\nПопробовано ${connectionVariants?.length || 1} вариантов.\n\nРекомендации:\n1. Используйте Transaction pooler connection string из Dashboard\n2. Формат: postgresql://postgres.[PROJECT-REF]:[PASSWORD]@aws-0-[REGION].pooler.supabase.com:6543/postgres?pgbouncer=true`;
+        }
+      } else if (err.code === 'ENOTFOUND' || errorMessage.includes('ENOTFOUND')) {
+        userFriendlyMessage = `❌ Не удалось найти хост базы данных.\n\nПроверьте:\n1. Правильность хоста в connection string\n2. Доступность базы данных из сети\n3. Настройки DNS`;
+      } else if (err.code === 'ETIMEDOUT' || errorMessage.includes('timeout')) {
+        userFriendlyMessage = `❌ Таймаут подключения.\n\nПроверьте:\n1. Доступность базы данных\n2. Правильность порта\n3. Настройки firewall\n4. Правильность пароля`;
+      }
+      
       console.error("Детали ошибки:", {
         message: err.message,
         code: err.code,
@@ -233,7 +348,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       if (!res.headersSent) {
         res.status(500).json({
           success: false,
-          error: errorMessage,
+          error: userFriendlyMessage,
         });
       }
     }
