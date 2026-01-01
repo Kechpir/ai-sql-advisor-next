@@ -190,13 +190,15 @@ export default function Home() {
     if (!schemaJson) return toast("warn", "Сначала загрузите схему");
     if (!nl.trim() && !fileContent) return toast("warn", "Введите задачу или загрузите файл");
     setLoading(true);
+    
+    // Формируем запрос с учетом файла
+    let query = nl.trim();
+    if (fileContent) {
+      const fileContext = `\n\nКонтекст из файла "${fileName}":\n${fileContent}`;
+      query = query ? query + fileContext : `Проанализируй содержимое файла и помоги сформировать SQL запросы.${fileContext}`;
+    }
+    
     try {
-      // Формируем запрос с учетом файла
-      let query = nl.trim();
-      if (fileContent) {
-        const fileContext = `\n\nКонтекст из файла "${fileName}":\n${fileContent}`;
-        query = query ? query + fileContext : `Проанализируй содержимое файла и помоги сформировать SQL запросы.${fileContext}`;
-      }
 
       const data = await generateSql(query, schemaJson, "postgres");
       if (data.blocked) return toast("err", "🚫 Запрос заблокирован политикой");
