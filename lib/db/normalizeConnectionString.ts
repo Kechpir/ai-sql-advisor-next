@@ -210,37 +210,100 @@ export function getSupabaseConnectionVariants(originalConnectionString: string):
     const password = url.password;
     const database = url.pathname.replace('/', '') || 'postgres';
     
-    // Извлекаем project ref
-    let projectRef = 'zaheofzxbfqabdxdmjtz'; // default
-    const projectRefMatch = hostname.match(/db\.([^.]+)\.supabase\.co/);
-    if (projectRefMatch) {
-      projectRef = projectRefMatch[1];
-    } else if (user.includes('.')) {
-      projectRef = user.split('.')[1];
+    // Извлекаем project ref из разных источников
+    let projectRef = 'zaheofzxbfqabdxdmjtz'; // default из env или известного значения
+    
+    // Способ 1: Из пользователя postgres.PROJECT_REF (приоритет, так как это самый надежный источник)
+    if (user.includes('.') && user.startsWith('postgres.')) {
+      projectRef = user.replace('postgres.', '');
+    }
+    
+    // Способ 2: Из хоста db.*.supabase.co (fallback)
+    if (projectRef === 'zaheofzxbfqabdxdmjtz') {
+      const hostMatch = hostname.match(/db\.([^.]+)\.supabase\.co/);
+      if (hostMatch) {
+        projectRef = hostMatch[1];
+      }
+    }
+    
+    // Способ 3: Из пользователя с точкой (если не postgres.*)
+    if (projectRef === 'zaheofzxbfqabdxdmjtz' && user.includes('.')) {
+      const userParts = user.split('.');
+      if (userParts.length >= 2) {
+        projectRef = userParts.slice(1).join('.'); // На случай если project ref содержит точки
+      }
+    }
+    
+    // Если connection string уже pooler, проверяем и исправляем формат пользователя
+    if (hostname.includes('pooler.supabase.com')) {
+      if (user.includes('.') && user.startsWith('postgres.')) {
+        // Если пользователь уже в правильном формате postgres.PROJECT_REF
+        const userProjectRef = user.replace('postgres.', '');
+        // Используем оригинал, если project ref совпадает или если не удалось определить project ref
+        if (userProjectRef === projectRef || projectRef === 'zaheofzxbfqabdxdmjtz') {
+          variants.push(originalConnectionString);
+        } else {
+          // Исправляем project ref на извлеченный
+          const correctedUser = `postgres.${projectRef}`;
+          url.username = correctedUser;
+          variants.push(url.toString());
+        }
+      } else {
+        // Исправляем пользователя: добавляем postgres.PROJECT_REF
+        const correctedUser = `postgres.${projectRef}`;
+        url.username = correctedUser;
+        variants.push(url.toString());
+      }
     }
     
     // Вариант 1: Transaction pooler (рекомендуемый для serverless)
+    // Пробуем разные регионы, но начинаем с us-east-1 (самый распространенный)
     const regions = ['us-east-1', 'us-west-1', 'eu-west-1', 'ap-southeast-1'];
+    
     for (const region of regions) {
-      const poolerHost = `aws-0-${region}.pooler.supabase.com`;
-      const poolerUser = `postgres.${projectRef}`;
-      variants.push(`postgresql://${poolerUser}:${password}@${poolerHost}:6543/${database}?pgbouncer=true&pool_mode=transaction`);
+      // Пробуем разные форматы хоста (aws-0, aws-1, etc.)
+      for (const awsNum of [0, 1]) {
+        const poolerHost = `aws-${awsNum}-${region}.pooler.supabase.com`;
+        const poolerUser = `postgres.${projectRef}`;
+        const variant = `postgresql://${poolerUser}:${password}@${poolerHost}:6543/${database}?pgbouncer=true&pool_mode=transaction`;
+        
+        // Добавляем только если еще нет такого варианта
+        if (!variants.includes(variant)) {
+          variants.push(variant);
+        }
+      }
     }
     
-    // Вариант 2: Session pooler (альтернатива)
-    for (const region of regions) {
-      const poolerHost = `aws-0-${region}.pooler.supabase.com`;
-      const poolerUser = `postgres.${projectRef}`;
-      variants.push(`postgresql://${poolerUser}:${password}@${poolerHost}:6543/${database}?pgbouncer=true&pool_mode=session`);
+    // Вариант 2: Session pooler (альтернатива, только если Transaction не сработал)
+    // Добавляем в конец списка
+    for (const region of regions.slice(0, 2)) { // Только первые 2 региона для session
+      for (const awsNum of [0, 1]) {
+        const poolerHost = `aws-${awsNum}-${region}.pooler.supabase.com`;
+        const poolerUser = `postgres.${projectRef}`;
+        const variant = `postgresql://${poolerUser}:${password}@${poolerHost}:6543/${database}?pgbouncer=true&pool_mode=session`;
+        
+        if (!variants.includes(variant)) {
+          variants.push(variant);
+        }
+      }
     }
     
-    // Вариант 3: Direct connection (может не работать извне)
-    if (hostname.includes('db.')) {
-      variants.push(`postgresql://${user}:${password}@${hostname}:5432/${database}?sslmode=require`);
+    // Вариант 3: Direct connection (последний вариант, может не работать извне)
+    if (hostname.includes('db.') && !hostname.includes('pooler')) {
+      const directVariant = `postgresql://${user}:${password}@${hostname}:5432/${database}?sslmode=require`;
+      if (!variants.includes(directVariant)) {
+        variants.push(directVariant);
+      }
+    }
+    
+    // Если не нашли ни одного варианта, возвращаем оригинал
+    if (variants.length === 0) {
+      variants.push(originalConnectionString);
     }
     
   } catch (error) {
     // Если не удалось распарсить, возвращаем оригинал
+    console.error('[getSupabaseConnectionVariants] Ошибка парсинга:', error);
     variants.push(originalConnectionString);
   }
   

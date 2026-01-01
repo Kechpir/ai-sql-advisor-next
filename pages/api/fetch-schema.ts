@@ -139,9 +139,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       
       if (normalized.provider === 'supabase') {
         console.log('[fetch-schema] Supabase обнаружен, пробуем несколько вариантов подключения');
+        console.log('[fetch-schema] Оригинальный connection string:', connectionString.replace(/:[^:@]+@/, ':****@'));
         const variants = getSupabaseConnectionVariants(connectionString);
         connectionVariants = variants;
         console.log(`[fetch-schema] Найдено ${variants.length} вариантов для попытки`);
+        // Логируем первые 3 варианта для отладки (без пароля)
+        variants.slice(0, 3).forEach((v, i) => {
+          console.log(`[fetch-schema] Вариант ${i + 1}: ${v.replace(/:[^:@]+@/, ':****@').substring(0, 100)}...`);
+        });
       }
       
       let lastError: Error | null = null;
@@ -167,6 +172,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           // Если подключение успешно, обновляем workingConnectionString
           workingConnectionString = variant;
+          break; // Прерываем цикл, так как подключение успешно
 
           const query = `
             SELECT
