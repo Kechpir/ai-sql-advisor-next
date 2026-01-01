@@ -48,6 +48,61 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     // === PostgreSQL ===
     if (dbType === "postgres" || dbType === "postgresql") {
+      // Для Supabase БД используем Edge Function (работает изнутри инфраструктуры)
+      // Прямое подключение может быть заблокировано firewall
+      const isSupabaseDb = connectionString.includes('supabase.co');
+      
+      if (isSupabaseDb) {
+        console.log('[fetch-schema] Пробуем Edge Function для Supabase БД (может требовать подписку)');
+        try {
+          const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+          const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+          
+          if (supabaseUrl && anonKey) {
+            const edgeFunctionUrl = `${supabaseUrl}/functions/v1/fetch_schema`;
+            const edgeResponse = await fetch(edgeFunctionUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': jwt ? `Bearer ${jwt}` : `Bearer ${anonKey}`,
+                'apikey': anonKey,
+              },
+              body: JSON.stringify({ 
+                db_url: connectionString, 
+                schema: 'public' 
+              }),
+            });
+            
+            if (edgeResponse.ok) {
+              const edgeData = await edgeResponse.json();
+              
+              // Преобразуем формат из Edge Function в формат локального API
+              if (edgeData.tables) {
+                Object.keys(edgeData.tables).forEach((tableName) => {
+                  const table = edgeData.tables[tableName];
+                  schema[tableName] = table.columns ? table.columns.map((c: any) => c.name) : [];
+                });
+              }
+              
+              console.log('[fetch-schema] ✅ Edge Function успешно выполнен');
+              return res.status(200).json({
+                success: true,
+                schema,
+                tables: Object.keys(schema),
+              });
+            } else {
+              const errorText = await edgeResponse.text();
+              // Если ошибка подписки (403) или другая - пробуем прямое подключение
+              console.log('[fetch-schema] Edge Function вернул ошибку, пробуем прямое подключение:', errorText.substring(0, 100));
+            }
+          }
+        } catch (edgeError: any) {
+          // Игнорируем ошибки Edge Function, пробуем прямое подключение
+          console.log('[fetch-schema] Edge Function недоступен, используем прямое подключение:', edgeError.message?.substring(0, 100));
+        }
+      }
+      
+      // Прямое подключение для других PostgreSQL БД или fallback для Supabase
       const client = new Client({ connectionString });
       try {
         await client.connect();
@@ -128,14 +183,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     }
     
-    // === Неподдерживаемый тип БД ===
-    else {
-      return res.status(400).json({ 
-        success: false, 
-        error: `Неподдерживаемый тип базы данных: ${dbInfo?.displayName || dbType}. Поддерживаются: PostgreSQL, MySQL, MariaDB, SQLite, CockroachDB` 
-      });
-    }
-
     // === SQLite ===
     else if (dbType === "sqlite") {
       // Динамический импорт для SQLite, так как он может быть проблемным в Next.js
@@ -156,6 +203,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           console.error("Ошибка при закрытии соединения SQLite:", closeError);
         }
       }
+    }
+    
+    // === Неподдерживаемый тип БД ===
+    else {
+      return res.status(400).json({ 
+        success: false, 
+        error: `Неподдерживаемый тип базы данных: ${dbInfo?.displayName || dbType}. Поддерживаются: PostgreSQL, MySQL, MariaDB, SQLite, CockroachDB` 
+      });
     }
 
       res.status(200).json({

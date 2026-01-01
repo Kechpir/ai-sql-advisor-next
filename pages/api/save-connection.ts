@@ -177,6 +177,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         // Если данные не зашифрованы (старый формат) - используем как есть
         
+        // Автоматическое исправление: для Supabase заменяем порт 6543 на 5432
+        // Connection pooling (6543) работает только изнутри Supabase, для локального подключения нужен прямой порт 5432
+        if (decryptedConnectionString.includes('supabase.co') && decryptedConnectionString.includes(':6543')) {
+          console.log('[save-connection] Автоматическое исправление: заменяем порт 6543 на 5432 для', conn.name);
+          decryptedConnectionString = decryptedConnectionString
+            .replace(/:6543\//, ':5432/')
+            .replace(/pgbouncer=true/g, 'sslmode=require')
+            .replace(/[?&]pgbouncer=true/g, '')
+            .replace(/\?&/, '?')
+            .replace(/\?$/, '');
+          
+          // Если после удаления pgbouncer не осталось параметров, добавляем sslmode=require
+          if (!decryptedConnectionString.includes('?')) {
+            decryptedConnectionString += '?sslmode=require';
+          } else if (!decryptedConnectionString.includes('sslmode=')) {
+            decryptedConnectionString += '&sslmode=require';
+          }
+        }
+        
         return {
           name: conn.name,
           connectionString: decryptedConnectionString,

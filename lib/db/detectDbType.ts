@@ -171,7 +171,21 @@ export function formatConnectionString(
   switch (dbInfo.type) {
     case 'postgres':
     case 'cockroachdb':
-      const sslParam = host.includes('supabase.co') ? 'pgbouncer=true' : 'sslmode=require';
+      // Для Supabase: pgbouncer=true только если порт 6543, иначе sslmode=require
+      // Учитываем переданные options (могут переопределить)
+      let sslParam = 'sslmode=require';
+      if (host.includes('supabase.co')) {
+        if (portValue === '6543') {
+          sslParam = 'pgbouncer=true';
+        } else {
+          sslParam = 'sslmode=require';
+        }
+      }
+      // Если переданы options, используем их вместо автоматического определения
+      if (options && Object.keys(options).length > 0) {
+        const params = new URLSearchParams(options);
+        sslParam = params.toString();
+      }
       connectionString = `postgresql://${user}${passwordEncoded}@${host}:${portValue}/${database}?${sslParam}`;
       break;
     
@@ -208,10 +222,12 @@ export function formatConnectionString(
       connectionString = `${prefix}${user}${passwordEncoded}@${host}:${portValue}/${database}`;
   }
 
-  // Добавляем дополнительные опции
-  if (options && Object.keys(options).length > 0) {
-    const params = new URLSearchParams(options);
-    connectionString += (connectionString.includes('?') ? '&' : '?') + params.toString();
+  // Для PostgreSQL опции уже добавлены в switch, для остальных добавляем здесь
+  if (dbInfo.type !== 'postgres' && dbInfo.type !== 'cockroachdb') {
+    if (options && Object.keys(options).length > 0) {
+      const params = new URLSearchParams(options);
+      connectionString += (connectionString.includes('?') ? '&' : '?') + params.toString();
+    }
   }
 
   return connectionString;
