@@ -119,17 +119,25 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         if (!connectionString) {
           // Формируем connection string
           const dialect = conn.dialect.toLowerCase();
-          const port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+          let port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
           const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
           
+          // Для Supabase используем connection pooling (порт 6543)
+          const isSupabase = conn.host.includes('supabase.co');
+          if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
+            port = "6543";
+          }
+          
           if (dialect === "postgres" || dialect === "postgresql") {
-            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+            const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
           } else if (dialect === "mysql") {
             connectionString = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
           } else if (dialect === "sqlite") {
             connectionString = `file:${conn.database}`;
           } else {
-            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+            const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+            connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
           }
         }
 
@@ -165,17 +173,25 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
     // Формируем connection string для сохранения
     let connectionString = '';
     const dialect = newConn.dialect.toLowerCase();
-    const portValue = newConn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+    let portValue = newConn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
     const passwordEncoded = newConn.password ? `:${encodeURIComponent(newConn.password)}` : "";
     
+    // Для Supabase используем connection pooling (порт 6543)
+    const isSupabase = newConn.host.includes('supabase.co');
+    if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
+      portValue = "6543";
+    }
+    
     if (dialect === "postgres" || dialect === "postgresql") {
-      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?sslmode=require`;
+      const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?${sslParam}`;
     } else if (dialect === "mysql") {
       connectionString = `mysql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}`;
     } else if (dialect === "sqlite") {
       connectionString = `file:${newConn.database}`;
     } else {
-      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?sslmode=require`;
+      const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+      connectionString = `postgresql://${newConn.user}${passwordEncoded}@${newConn.host}:${portValue}/${newConn.database}?${sslParam}`;
     }
     
     // Сохраняем connection string в объекте подключения
@@ -234,12 +250,20 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
       }
 
       // Формируем правильную строку подключения в зависимости от диалекта
-      const port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
+      let port = conn.port || (dialect === "mysql" ? "3306" : dialect === "mssql" ? "1433" : "5432");
       const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
       
+      // Для Supabase используем connection pooling (порт 6543) вместо прямого подключения
+      // Это решает проблему ENOTFOUND и улучшает производительность
+      const isSupabase = conn.host.includes('supabase.co');
+      if (isSupabase && (dialect === "postgres" || dialect === "postgresql")) {
+        port = "6543"; // Connection pooling port для Supabase
+      }
+      
       if (dialect === "postgres" || dialect === "postgresql") {
-        // Добавляем sslmode=require для безопасного подключения
-        url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        // Для Supabase используем pgbouncer=true, для других - sslmode=require
+        const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+        url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
       } else if (dialect === "mysql") {
         url = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
       } else if (dialect === "sqlite") {
@@ -247,7 +271,20 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
       } else if (dialect === "mssql") {
         url = `mssql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
       } else {
-        url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        const sslParam = isSupabase ? "pgbouncer=true" : "sslmode=require";
+        url = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?${sslParam}`;
+      }
+    } else {
+      // Исправляем существующий connection string для Supabase
+      if (url.includes('supabase.co')) {
+        // Заменяем порт 5432 на 6543 для connection pooling
+        url = url.replace(/:5432\//, ':6543/');
+        // Добавляем pgbouncer=true если его нет
+        if (!url.includes('pgbouncer=true') && !url.includes('?')) {
+          url += '?pgbouncer=true';
+        } else if (!url.includes('pgbouncer=true') && url.includes('?')) {
+          url += '&pgbouncer=true';
+        }
       }
     }
     
@@ -360,7 +397,21 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
       onToast("ok", `✅ Подключено к ${conn.database}`);
     } catch (err: any) {
       console.error("Ошибка подключения:", err);
-      const errorMessage = err.message || "Ошибка подключения";
+      let errorMessage = err.message || "Ошибка подключения";
+      
+      // Улучшенные сообщения об ошибках
+      if (errorMessage.includes("ENOTFOUND") || errorMessage.includes("getaddrinfo")) {
+        if (conn.host.includes('supabase.co')) {
+          errorMessage = "❌ Не удалось найти хост Supabase. Проверьте:\n1. Правильность хоста в Supabase Dashboard\n2. Используйте Connection Pooling (порт 6543) вместо Direct connection\n3. Проверьте настройки сети";
+        } else {
+          errorMessage = `❌ Хост "${conn.host}" не найден. Проверьте правильность адреса и доступность сети.`;
+        }
+      } else if (errorMessage.includes("password") || errorMessage.includes("authentication")) {
+        errorMessage = "❌ Ошибка аутентификации. Проверьте правильность пароля и имени пользователя.";
+      } else if (errorMessage.includes("timeout") || errorMessage.includes("ECONNREFUSED")) {
+        errorMessage = `❌ Не удалось подключиться к ${conn.host}. Проверьте:\n1. Правильность порта\n2. Доступность базы данных\n3. Настройки firewall`;
+      }
+      
       onToast("err", errorMessage);
     } finally {
       setLoading(false);
