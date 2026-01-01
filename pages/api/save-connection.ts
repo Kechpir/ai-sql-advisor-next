@@ -1,5 +1,6 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from '@supabase/supabase-js';
+import { encrypt, decrypt, isEncrypted } from '@/lib/encryption';
 
 // CORS заголовки
 function setCorsHeaders(res: NextApiResponse, origin: string | undefined) {
@@ -116,13 +117,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const dbType = detectDbType(connectionString);
       const { host, database } = parseConnectionString(connectionString);
 
-      // Сохраняем подключение (connection_string_encrypted - просто строка, не шифруем для простоты)
+      // Шифруем connection string перед сохранением
+      const encryptedConnectionString = encrypt(connectionString);
+      console.log('[save-connection] Сохранение подключения:', { userId, name: name.trim(), dbType, host, database });
+
+      // Сохраняем подключение с зашифрованным connection string
       const { data, error } = await supabase
         .from("user_connections")
         .upsert({
           user_id: userId,
           name: name.trim(),
-          connection_string_encrypted: connectionString, // В будущем можно зашифровать
+          connection_string_encrypted: encryptedConnectionString,
           db_type: dbType,
           host: host || null,
           database: database || null,
@@ -137,6 +142,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         return res.status(500).json({ error: error.message });
       }
 
+      console.log('[save-connection] ✅ Подключение успешно сохранено:', data?.[0]?.id);
       return res.status(200).json({ success: true, connection: data?.[0] });
     }
 
@@ -154,13 +160,31 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
 
       // Преобразуем в формат, который ожидают компоненты
-      const connections = (data || []).map(conn => ({
-        name: conn.name,
-        connectionString: conn.connection_string_encrypted,
-        dbType: conn.db_type,
-        host: conn.host,
-        database: conn.database,
-      }));
+      // Расшифровываем connection strings (они зашифрованы)
+      const connections = (data || []).map(conn => {
+        let decryptedConnectionString = conn.connection_string_encrypted;
+        
+        // Если данные зашифрованы, расшифровываем их
+        if (isEncrypted(conn.connection_string_encrypted)) {
+          try {
+            decryptedConnectionString = decrypt(conn.connection_string_encrypted);
+          } catch (error) {
+            // Если не удалось расшифровать (старый ключ или поврежденные данные)
+            // Пропускаем это подключение, чтобы не ломать загрузку других
+            console.warn('[save-connection] Не удалось расшифровать подключение:', conn.name, error);
+            return null;
+          }
+        }
+        // Если данные не зашифрованы (старый формат) - используем как есть
+        
+        return {
+          name: conn.name,
+          connectionString: decryptedConnectionString,
+          dbType: conn.db_type,
+          host: conn.host,
+          database: conn.database,
+        };
+      }).filter(conn => conn !== null);
 
       return res.status(200).json({ success: true, connections });
     }

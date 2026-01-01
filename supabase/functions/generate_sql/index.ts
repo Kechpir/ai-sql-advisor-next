@@ -396,6 +396,19 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ⚠️ ВРЕМЕННОЕ ОТКЛЮЧЕНИЕ OPENAI ДЛЯ ТЕСТИРОВАНИЯ GEMINI
+    const OPENAI_DISABLED = Deno.env.get("OPENAI_DISABLED") === "true";
+    if (OPENAI_DISABLED) {
+      return new Response(JSON.stringify({ 
+        error: "OpenAI временно отключен. Используйте test_gemini функцию для тестирования Gemini.",
+        provider: "openai",
+        disabled: true
+      }), {
+        status: 503,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    }
+
     // Вызов OpenAI
     const { sql, usage } = await callOpenAI(nl.trim(), schemaText, dialect, plan);
 

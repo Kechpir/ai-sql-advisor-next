@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import LimitModal from "@/components/common/LimitModal";
+import { logAction } from "@/lib/api";
 
 interface DataTableModalProps {
   id: string;
@@ -52,6 +53,14 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
             setOpenedTracked(true);
             // Обновляем счетчик токенов после открытия
             window.dispatchEvent(new Event('sql-generated'));
+            
+            // Логирование открытия таблицы
+            logAction({
+              action_type: 'table_open',
+              sql_query: sql,
+              rows_returned: rows.length,
+              success: true,
+            });
           } else {
             let error;
             try {
@@ -247,6 +256,17 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    
+    // Логирование успешного экспорта
+    const exportFormat = filename.split('.').pop()?.toUpperCase() || '';
+    logAction({
+      action_type: 'data_export',
+      sql_query: sql,
+      export_format: exportFormat,
+      rows_returned: rows.length,
+      success: true,
+      file_info: { filename, size: blob.size },
+    });
   };
 
   // Экспорт в SQL (INSERT statements)
@@ -460,6 +480,15 @@ export default function DataTableModal({ id, sql, columns, rows, onClose, onMini
           }
         } else {
           window.dispatchEvent(new Event('sql-generated'));
+          
+          // Логирование успешного экспорта PDF
+          logAction({
+            action_type: 'data_export',
+            sql_query: sql,
+            export_format: 'PDF',
+            rows_returned: rows.length,
+            success: true,
+          });
         }
       }
     } catch (err) {

@@ -22,9 +22,16 @@ export default function SqlBuilderApp() {
     setLoading(true);
     setError(null);
     try {
+      // Получаем JWT токен для авторизации
+      const jwt = localStorage.getItem('jwt');
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (jwt) {
+        headers["Authorization"] = `Bearer ${jwt}`;
+      }
+      
       const res = await fetch("/api/fetch-query", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ query }),
       });
 

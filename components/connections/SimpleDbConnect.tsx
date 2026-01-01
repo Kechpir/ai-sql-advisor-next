@@ -36,9 +36,7 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
     const loadConnections = async () => {
       const jwt = localStorage.getItem('jwt');
       if (!jwt) {
-        // Fallback на localStorage, если нет авторизации
-        const saved = localStorage.getItem("savedConnections");
-        if (saved) setConnections(JSON.parse(saved));
+        // Без авторизации подключения не загружаются (безопасность)
         return;
       }
 
@@ -93,9 +91,7 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         }
       } catch (err) {
         console.error('Ошибка загрузки подключений:', err);
-        // Fallback на localStorage
-        const saved = localStorage.getItem("savedConnections");
-        if (saved) setConnections(JSON.parse(saved));
+        // Не используем localStorage fallback (безопасность)
       }
     };
 
@@ -105,12 +101,14 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
   const saveConnections = async (list: Connection[]) => {
     const jwt = localStorage.getItem('jwt');
     
-    // Сохраняем в localStorage для fallback
-    localStorage.setItem("savedConnections", JSON.stringify(list));
+    // НЕ сохраняем в localStorage (безопасность - пароли не должны храниться в браузере)
     setConnections(list);
 
-    // Сохраняем в Supabase, если авторизован
-    if (!jwt) return;
+    // Сохраняем только в Supabase (с шифрованием)
+    if (!jwt) {
+      console.warn('Попытка сохранить подключение без авторизации');
+      return;
+    }
 
     try {
       // Сохраняем каждое подключение
@@ -253,13 +251,60 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
       }
     }
     
-    console.log("Подключение к БД:", { dialect, host: conn.host, database: conn.database, url: url.replace(/:[^:@]+@/, ":****@") });
+    // НЕ логируем connection strings (безопасность)
     
     setLoading(true);
     try {
+      // Получаем JWT токен для авторизации
+      const jwt = localStorage.getItem('jwt');
+      if (!jwt) {
+        throw new Error("Необходима авторизация для подключения к базе данных");
+      }
+      
+      const headers: HeadersInit = { 
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${jwt}`
+      };
+      
+      // Генерируем уникальное имя подключения на основе host+database
+      const connectionName = conn.name?.trim() || `${conn.host}_${conn.database}`.replace(/[^a-zA-Z0-9_]/g, '_');
+      
+      // Сначала сохраняем connection string в Supabase (автоматически)
+      // Это необходимо для безопасности - проверки принадлежности
+      const saveRes = await fetch("/api/save-connection", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: connectionName,
+          connectionString: url,
+        }),
+      });
+      
+      // Проверяем результат сохранения
+      let saveSuccess = false;
+      if (saveRes.ok) {
+        saveSuccess = true;
+      } else {
+        const saveErrorData = await saveRes.json().catch(() => ({ error: "Ошибка сохранения подключения" }));
+        // Если подключение уже существует - это нормально (upsert обработает)
+        if (saveRes.status === 409) {
+          saveSuccess = true; // Upsert уже обработал
+        } else {
+          console.warn("[SimpleDbConnect] Предупреждение при сохранении подключения:", saveErrorData.error);
+          // Продолжаем, возможно подключение уже сохранено
+        }
+      }
+      
+      // Небольшая задержка для гарантии, что данные записались в БД (Replication lag в Supabase)
+      if (saveSuccess) {
+        console.log("[SimpleDbConnect] Подключение сохранено, ожидание записи в БД...");
+        await new Promise(resolve => setTimeout(resolve, 300)); // Увеличено до 300мс
+      }
+      
+      // Теперь запрашиваем схему (connection string уже сохранен и принадлежит пользователю)
       const res = await fetch("/api/fetch-schema", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ connectionString: url }),
       });
       
@@ -298,15 +343,15 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
       };
       
       onLoaded(schemaData);
-      // Сохраняем последнее подключение в localStorage (без пароля для безопасности)
-      const lastConnection = {
-        connectionString: url,
+      // НЕ сохраняем connection string в localStorage (безопасность)
+      // Только метаданные для отображения (без пароля)
+      const lastConnectionMeta = {
         dbType: dialect,
         database: conn.database,
         host: conn.host,
         timestamp: Date.now(),
       };
-      localStorage.setItem("lastConnection", JSON.stringify(lastConnection));
+      localStorage.setItem("lastConnectionMeta", JSON.stringify(lastConnectionMeta));
       
       // Передаем connectionString в родительский компонент
       if (onConnectionString) {

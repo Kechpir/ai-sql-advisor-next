@@ -44,6 +44,48 @@ export async function fetchSchema(dbUrl: string, schema = 'public') {
   return r.json();
 }
 
+// ===== SQL generation (Gemini test) =====
+export async function generateSqlGemini(nl: string, schemaJson: any, dialect: string = 'postgres') {
+  const jwt = getToken();
+  
+  try {
+    const r = await fetch(`${BASE}/test_gemini`, {
+      method: 'POST',
+      headers: headers(),
+      body: json({ nl, schema: schemaJson, dialect }),
+    });
+    
+    if (!r.ok) {
+      let errorText: string;
+      try {
+        errorText = await r.text();
+      } catch (e) {
+        errorText = `HTTP ${r.status} ${r.statusText}`;
+      }
+      
+      let errorMessage = errorText;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorText;
+      } catch {}
+      
+      throw new Error(`❌ Ошибка Gemini: ${errorMessage}`);
+    }
+    
+    const data = await r.json();
+    
+    // Отправляем событие для обновления счетчика токенов
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('sql-generated'));
+    }
+    
+    return data;
+  } catch (error: any) {
+    console.error('[generateSqlGemini] Ошибка:', error);
+    throw new Error(error.message || 'Ошибка генерации SQL через Gemini');
+  }
+}
+
 // ===== SQL generation =====
 export async function generateSql(nl: string, schemaJson: any, dialect: string = 'postgres') {
   // Получаем JWT токен один раз в начале функции
@@ -354,4 +396,193 @@ export async function deleteSchema(name: string) {
   });
   if (!r.ok) throw new Error(await r.text());
   return r.json();
+}
+
+// ===== Logging =====
+export type LogActionType = 
+  | 'sql_generation'
+  | 'sql_execution'
+  | 'table_open'
+  | 'data_export'
+  | 'schema_load'
+  | 'schema_save'
+  | 'schema_delete'
+  | 'connection_establish';
+
+export interface LogActionPayload {
+  action_type: LogActionType;
+  sql_query?: string;
+  natural_language_query?: string;
+  schema_used?: any;
+  dialect?: string;
+  rows_returned?: number;
+  execution_time_ms?: number;
+  success?: boolean;
+  error_message?: string;
+  tokens_used?: number;
+  file_info?: any;
+  export_format?: string;
+}
+
+/**
+ * Логирование действия пользователя
+ * @param payload Данные для логирования
+ */
+export async function logAction(payload: LogActionPayload): Promise<void> {
+  const jwt = getToken();
+  
+  // Не логируем если нет JWT (пользователь не авторизован)
+  if (!jwt || !isValidJWT(jwt)) {
+    console.warn('[logAction] Пропуск логирования: пользователь не авторизован');
+    return;
+  }
+  
+  try {
+    console.log('[logAction] Отправка лога:', { action_type: payload.action_type, hasJWT: !!jwt });
+    
+    const r = await fetch('/api/log-action', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${jwt}`
+      },
+      body: json(payload),
+    });
+    
+    if (!r.ok) {
+      const errorText = await r.text();
+      console.error('[logAction] Ошибка логирования:', {
+        status: r.status,
+        statusText: r.statusText,
+        error: errorText,
+        action_type: payload.action_type,
+      });
+      // Не выбрасываем ошибку, чтобы не прерывать основной поток
+      // Логирование - это дополнительная функция
+    } else {
+      const result = await r.json();
+      console.log('[logAction] Лог успешно сохранен:', { id: result.id, action_type: payload.action_type });
+    }
+  } catch (error: any) {
+    console.error('[logAction] Исключение при логировании:', {
+      error: error.message,
+      action_type: payload.action_type,
+    });
+    // Не выбрасываем ошибку, чтобы не прерывать основной поток
+  }
+}
+
+// ===== Logs Retrieval =====
+export interface GetLogsParams {
+  action_type?: LogActionType;
+  limit?: number;
+  offset?: number;
+  search?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface LogEntry {
+  id: string;
+  user_id: string;
+  action_type: LogActionType;
+  sql_query?: string;
+  natural_language_query?: string;
+  schema_used?: any;
+  dialect?: string;
+  rows_returned?: number;
+  execution_time_ms?: number;
+  success: boolean;
+  error_message?: string;
+  tokens_used?: number;
+  file_info?: any;
+  export_format?: string;
+  created_at: string;
+}
+
+export interface GetLogsResponse {
+  logs: LogEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+/**
+ * Получение логов пользователя
+ * @param params Параметры фильтрации
+ */
+export async function getLogs(params: GetLogsParams = {}): Promise<GetLogsResponse> {
+  const jwt = getToken();
+  
+  const queryParams = new URLSearchParams();
+  if (params.action_type) queryParams.append('action_type', params.action_type);
+  if (params.limit) queryParams.append('limit', params.limit.toString());
+  if (params.offset) queryParams.append('offset', params.offset.toString());
+  if (params.search) queryParams.append('search', params.search);
+  if (params.start_date) queryParams.append('start_date', params.start_date);
+  if (params.end_date) queryParams.append('end_date', params.end_date);
+  
+  const r = await fetch(`/api/get-logs?${queryParams.toString()}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(jwt && isValidJWT(jwt) ? { 'Authorization': `Bearer ${jwt}` } : {})
+    },
+  });
+  
+  if (!r.ok) {
+    const errorText = await r.text();
+    throw new Error(`Ошибка получения логов: ${errorText}`);
+  }
+  
+  return r.json();
+}
+
+// ===== SQL Reviewer =====
+export interface SqlReviewerParams {
+  sql: string;
+  schema?: any;
+  dialect?: string;
+  natural_language_query?: string;
+}
+
+export interface SqlReviewerResponse {
+  review: string;
+  reviewed_at: string;
+}
+
+/**
+ * Получение AI-ревью SQL запроса (доступно только для тарифов Light и Pro)
+ * Вызывает Supabase Edge Function напрямую
+ * @param params Параметры для анализа SQL
+ */
+export async function reviewSql(params: SqlReviewerParams): Promise<SqlReviewerResponse> {
+  const jwt = getToken();
+  
+  if (!jwt || !isValidJWT(jwt)) {
+    throw new Error("Требуется авторизация для использования AI SQL Reviewer");
+  }
+  
+  try {
+    const r = await fetch(`${BASE}/sql_reviewer`, {
+      method: 'POST',
+      headers: headers(),
+      body: json(params),
+    });
+    
+    if (!r.ok) {
+      const errorText = await r.text();
+      let errorMessage = errorText;
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMessage = errorJson.error || errorText;
+      } catch {}
+      throw new Error(`❌ Ошибка AI SQL Reviewer: ${errorMessage}`);
+    }
+    
+    return r.json();
+  } catch (error: any) {
+    console.error('[reviewSql] Ошибка:', error);
+    throw new Error(error.message || 'Ошибка получения AI-ревью');
+  }
 }

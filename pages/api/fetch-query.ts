@@ -4,14 +4,31 @@ import mysql from "mysql2/promise";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { jsonToSql } from "@/lib/db/jsonToSql";
+import { checkAuth, checkConnectionOwnership } from '@/lib/auth';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+
+  // Проверка авторизации
+  const userId = checkAuth(req);
+  if (!userId) {
+    return res.status(401).json({ error: "Не авторизован" });
+  }
 
   const { connectionString, query, dbType, ...jsonQuery } = req.body;
 
   if (!connectionString) {
     return res.status(400).json({ error: "❌ Missing connection string" });
+  }
+
+  // Получаем JWT токен для передачи в проверку (нужен для RLS)
+  const authHeader = req.headers.authorization;
+  const jwt = authHeader?.replace(/^Bearer /i, '') || null;
+  
+  // Проверка принадлежности connection string пользователю
+  const isOwner = await checkConnectionOwnership(userId, connectionString, jwt);
+  if (!isOwner) {
+    return res.status(403).json({ error: "Доступ запрещен: подключение не принадлежит пользователю" });
   }
 
   // Определяем тип БД из connectionString, если не указан

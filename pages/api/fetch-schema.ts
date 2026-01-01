@@ -2,6 +2,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Client } from "pg";
 import mysql from "mysql2/promise";
+import { checkAuth, checkConnectionOwnership } from '@/lib/auth';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Оборачиваем весь handler в try-catch для перехвата любых ошибок
@@ -10,10 +11,29 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(405).json({ error: "Метод не поддерживается (требуется POST)" });
     }
 
+    // Проверка авторизации
+    const userId = checkAuth(req);
+    if (!userId) {
+      return res.status(401).json({ error: "Не авторизован" });
+    }
+
     const { connectionString } = req.body;
     if (!connectionString) {
       return res.status(400).json({ error: "Не передан connectionString" });
     }
+
+    // Получаем JWT токен для передачи в проверку (нужен для RLS)
+    const authHeader = req.headers.authorization;
+    const jwt = authHeader?.replace(/^Bearer /i, '') || null;
+
+    // Проверка принадлежности connection string пользователю
+    console.log('[fetch-schema] Проверка принадлежности connection string пользователю...');
+    const isOwner = await checkConnectionOwnership(userId, connectionString, jwt);
+    if (!isOwner) {
+      console.error('[fetch-schema] ❌ Доступ запрещен: подключение не принадлежит пользователю');
+      return res.status(403).json({ error: "Доступ запрещен: подключение не принадлежит пользователю" });
+    }
+    console.log('[fetch-schema] ✅ Подключение принадлежит пользователю, продолжаем...');
 
     // Определяем тип БД из строки подключения
     let dbType = "postgres";
@@ -21,10 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     else if (connectionString.startsWith("postgres://") || connectionString.startsWith("postgresql://")) dbType = "postgres";
     else if (connectionString.startsWith("sqlite://") || connectionString.startsWith("file:")) dbType = "sqlite";
     
-    console.log("Получен запрос на получение схемы:", { 
-      dbType, 
-      connectionString: connectionString.replace(/:[^:@]+@/, ":****@") 
-    });
+    // НЕ логируем connection strings (безопасность)
+    console.log("Получен запрос на получение схемы:", { dbType });
 
     try {
     const schema: Record<string, string[]> = {};

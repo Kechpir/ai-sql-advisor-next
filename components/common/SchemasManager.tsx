@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { listSchemas, getSchema, diffSchema, updateSchema, deleteSchema, saveSchema } from '@/lib/api'
+import { listSchemas, getSchema, diffSchema, updateSchema, deleteSchema, saveSchema, logAction } from '@/lib/api'
 
 type Toast = { type: 'ok' | 'warn' | 'err', text: string } | null
 
@@ -66,9 +66,23 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
       const r = await getSchema(name)
       setSchemaJson(r.schema)
       toast('ok', `Схема "${name}" успешно загружена`)
+      
+      // Логирование загрузки схемы
+      logAction({
+        action_type: 'schema_load',
+        schema_used: r.schema,
+        success: true,
+      });
     } catch (e: any) {
       toast('err', 'Ошибка при загрузке схемы')
       console.error(e)
+      
+      // Логирование ошибки загрузки схемы
+      logAction({
+        action_type: 'schema_load',
+        success: false,
+        error_message: e?.message || 'Ошибка при загрузке схемы',
+      });
     }
   }
 
@@ -105,8 +119,27 @@ export default function SchemasManager({ schemaJson, setSchemaJson }: any) {
       `Удалить схему "${name}"?`,
       `Действительно удалить схему ${name}?`,
       async () => {
-        try { await deleteSchema(name); toast('ok', `Удалена: ${name}`); refresh() }
-        catch (e: any) { toast('err', 'Ошибка при удалении'); console.error(e) }
+        try {
+          await deleteSchema(name);
+          toast('ok', `Удалена: ${name}`);
+          refresh();
+          
+          // Логирование удаления схемы
+          logAction({
+            action_type: 'schema_delete',
+            success: true,
+          });
+        } catch (e: any) {
+          toast('err', 'Ошибка при удалении');
+          console.error(e);
+          
+          // Логирование ошибки удаления схемы
+          logAction({
+            action_type: 'schema_delete',
+            success: false,
+            error_message: e?.message || 'Ошибка при удалении схемы',
+          });
+        }
       }
     )
   }

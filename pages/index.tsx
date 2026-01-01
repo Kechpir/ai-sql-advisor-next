@@ -4,11 +4,13 @@ import Image from "next/image";
 import Link from "next/link";
 import SimpleDbConnect from "@/components/connections/SimpleDbConnect";
 import FileUpload from "@/components/common/FileUpload";
+import CompactFileUpload from "@/components/common/CompactFileUpload";
+import FrequentQueriesDropdown from "@/components/common/FrequentQueriesDropdown";
 import DataTableModal from "@/components/tables/DataTableModal";
 import TableTabsBar from "@/components/tables/TableTabsBar";
 import TokenCounter from "@/components/common/TokenCounter";
 import LimitModal from "@/components/common/LimitModal";
-import { generateSql, saveSchema } from "@/lib/api";
+import { generateSql, saveSchema, logAction, reviewSql } from "@/lib/api";
 
 /* -------------------- CONSTANTS -------------------- */
 const DANGER_RE =
@@ -57,6 +59,8 @@ export default function Home() {
   const [savepointSql, setSavepointSql] = useState<string | null>(null);
   const [explain, setExplain] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [sqlWarning, setSqlWarning] = useState<string | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [connectionString, setConnectionString] = useState<string | null>(null);
@@ -74,61 +78,12 @@ export default function Home() {
     type: "limit",
   });
 
-  // Загружаем последнее подключение из localStorage при монтировании
-  useEffect(() => {
-    const loadLastConnection = () => {
-      try {
-        const lastConn = localStorage.getItem("lastConnection");
-        if (lastConn) {
-          const conn = JSON.parse(lastConn);
-          if (conn.connectionString) {
-            setConnectionString(conn.connectionString);
-            setDbType(conn.dbType || "postgres");
-            setHasActiveConnection(true);
-            console.log("Загружено подключение из localStorage");
-          } else {
-            setHasActiveConnection(false);
-          }
-        } else {
-          setHasActiveConnection(false);
-        }
-      } catch (e) {
-        console.error("Ошибка загрузки последнего подключения:", e);
-        setHasActiveConnection(false);
-      }
-    };
-    
-    loadLastConnection();
-    
-    // Слушаем изменения в localStorage (на случай, если подключение изменилось в другой вкладке)
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "lastConnection") {
-        loadLastConnection();
-      }
-    };
-    
-    window.addEventListener("storage", handleStorageChange);
-    return () => window.removeEventListener("storage", handleStorageChange);
-  }, []);
+  // НЕ загружаем подключения из localStorage (безопасность - пароли не должны храниться в браузере)
+  // Подключения должны загружаться из Supabase через компоненты подключений
 
   // Обновляем hasActiveConnection при изменении connectionString
   useEffect(() => {
-    if (connectionString) {
-      setHasActiveConnection(true);
-    } else {
-      // Проверяем localStorage если connectionString пустой
-      try {
-        const lastConn = localStorage.getItem("lastConnection");
-        if (lastConn) {
-          const conn = JSON.parse(lastConn);
-          setHasActiveConnection(!!conn.connectionString);
-        } else {
-          setHasActiveConnection(false);
-        }
-      } catch (e) {
-        setHasActiveConnection(false);
-      }
-    }
+    setHasActiveConnection(!!connectionString);
   }, [connectionString]);
   const [showTableModal, setShowTableModal] = useState<{
     sql: string;
@@ -257,9 +212,54 @@ export default function Home() {
 
       // Отправляем событие для обновления счетчика токенов
       window.dispatchEvent(new Event('sql-generated'));
+
+      // Автоматически получаем предупреждение о возможных проблемах
+      setSqlWarning(null);
+      setReviewLoading(true);
+      try {
+        const reviewResult = await reviewSql({
+          sql: sql,
+          schema: schemaJson,
+          dialect: dbType || "postgres",
+          natural_language_query: query,
+        });
+        const reviewText = reviewResult.review?.trim() || "";
+        // Показываем предупреждение только если есть реальная проблема (не "OK" и не пустое)
+        if (reviewText && reviewText.toUpperCase() !== "OK" && !reviewText.includes("корректный")) {
+          setSqlWarning(reviewText);
+        }
+      } catch (e: any) {
+        // Игнорируем ошибки ревью (не критично)
+        console.log("Ошибка получения предупреждения:", e.message);
+      } finally {
+        setReviewLoading(false);
+      }
+
+      // Логирование успешной генерации SQL
+      logAction({
+        action_type: 'sql_generation',
+        natural_language_query: query,
+        sql_query: sql,
+        schema_used: schemaJson,
+        dialect: 'postgres',
+        tokens_used: data.tokens_used || undefined,
+        success: true,
+        file_info: fileContent ? { filename: fileName, size: fileContent.length } : undefined,
+      });
     } catch (e: any) {
       console.error(e);
       const errorMessage = e?.message || "Ошибка генерации";
+      
+      // Логирование ошибки генерации SQL
+      logAction({
+        action_type: 'sql_generation',
+        natural_language_query: query,
+        schema_used: schemaJson,
+        dialect: 'postgres',
+        success: false,
+        error_message: errorMessage,
+        file_info: fileContent ? { filename: fileName, size: fileContent.length } : undefined,
+      });
       
       // Проверяем, является ли это ошибкой лимита токенов
       if (errorMessage.includes("Достигнут лимит токенов") || errorMessage.includes("limit_reached")) {
@@ -292,10 +292,26 @@ export default function Home() {
     try {
       await saveSchema(saveName.trim(), schemaJson);
       toast("ok", `Сохранено: «${saveName.trim()}» ✅`);
+      
+      // Логирование сохранения схемы
+      logAction({
+        action_type: 'schema_save',
+        schema_used: schemaJson,
+        success: true,
+      });
+      
       setSaveName("");
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       toast("err", "Ошибка сохранения");
+      
+      // Логирование ошибки сохранения схемы
+      logAction({
+        action_type: 'schema_save',
+        schema_used: schemaJson,
+        success: false,
+        error_message: e?.message || "Ошибка сохранения схемы",
+      });
     }
   };
 
@@ -305,20 +321,7 @@ export default function Home() {
     let connStr = connectionString;
     let connDbType = dbType;
     
-    if (!connStr) {
-      try {
-        const lastConn = localStorage.getItem("lastConnection");
-        if (lastConn) {
-          const conn = JSON.parse(lastConn);
-          connStr = conn.connectionString;
-          connDbType = conn.dbType || "postgres";
-          setConnectionString(connStr);
-          setDbType(connDbType);
-        }
-      } catch (e) {
-        console.error("Ошибка загрузки подключения:", e);
-      }
-    }
+    // НЕ загружаем connection string из localStorage (безопасность)
 
     if (!connStr) {
       toast("warn", "Сначала подключитесь к базе данных");
@@ -368,9 +371,33 @@ export default function Home() {
 
         // Отправляем событие для обновления счетчика токенов
         window.dispatchEvent(new Event('sql-generated'));
+
+        // Логирование успешной генерации SQL
+        logAction({
+          action_type: 'sql_generation',
+          natural_language_query: query,
+          sql_query: sql,
+          schema_used: schemaJson,
+          dialect: 'postgres',
+          tokens_used: data.tokens_used || undefined,
+          success: true,
+          file_info: fileContent ? { filename: fileName, size: fileContent.length } : undefined,
+        });
       } catch (e: any) {
         console.error(e);
         const errorMessage = e?.message || "Ошибка генерации";
+        
+        // Логирование ошибки генерации SQL
+        logAction({
+          action_type: 'sql_generation',
+          natural_language_query: query,
+          schema_used: schemaJson,
+          dialect: 'postgres',
+          success: false,
+          error_message: errorMessage,
+          file_info: fileContent ? { filename: fileName, size: fileContent.length } : undefined,
+        });
+        
         toast("err", errorMessage);
         setLoading(false);
         setExecutingSql(false);
@@ -382,6 +409,7 @@ export default function Home() {
 
     // Теперь выполняем SQL и показываем таблицу
     setExecutingSql(true);
+    const executionStartTime = Date.now();
     try {
       const cleanSql = getCleanSql(sqlToExecute);
       if (!cleanSql) {
@@ -390,10 +418,16 @@ export default function Home() {
         return;
       }
 
-      console.log("📡 Запрос к API /api/fetch-query...");
+      // Получаем JWT токен для авторизации
+      const jwt = localStorage.getItem('jwt');
+      const headers: HeadersInit = { "Content-Type": "application/json" };
+      if (jwt) {
+        headers["Authorization"] = `Bearer ${jwt}`;
+      }
+      
       const res = await fetch("/api/fetch-query", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           connectionString: connStr,
           query: cleanSql,
@@ -410,26 +444,78 @@ export default function Home() {
         rowsCount: data?.rows?.length 
       });
       
+      const executionTime = Date.now() - executionStartTime;
+      
       if (!res.ok || !data.success) {
         const errorMsg = data?.error || "Ошибка выполнения SQL";
         console.error("❌ Ошибка в данных API:", errorMsg);
+        
+        // Логирование ошибки выполнения SQL
+        logAction({
+          action_type: 'sql_execution',
+          sql_query: cleanSql,
+          dialect: connDbType,
+          execution_time_ms: executionTime,
+          success: false,
+          error_message: typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg),
+        });
+        
         throw new Error(typeof errorMsg === 'string' ? errorMsg : JSON.stringify(errorMsg));
       }
 
       if (!data.columns || !Array.isArray(data.columns)) {
         console.error("❌ API вернул некорректные колонки:", data.columns);
-        throw new Error("API вернул некорректный формат колонок");
+        const errorMsg = "API вернул некорректный формат колонок";
+        
+        // Логирование ошибки выполнения SQL
+        logAction({
+          action_type: 'sql_execution',
+          sql_query: cleanSql,
+          dialect: connDbType,
+          execution_time_ms: executionTime,
+          success: false,
+          error_message: errorMsg,
+        });
+        
+        throw new Error(errorMsg);
       }
 
+      const rows = Array.isArray(data.rows) ? data.rows : [];
       const modalData = {
         sql: cleanSql,
         columns: data.columns,
-        rows: Array.isArray(data.rows) ? data.rows : [],
+        rows: rows,
       };
       setShowTableModal(modalData);
+
+      // Логирование успешного выполнения SQL
+      logAction({
+        action_type: 'sql_execution',
+        sql_query: cleanSql,
+        dialect: connDbType,
+        rows_returned: rows.length,
+        execution_time_ms: executionTime,
+        success: true,
+      });
     } catch (e: any) {
       console.error(e);
-      toast("err", e.message || "Ошибка выполнения SQL");
+      const executionTime = Date.now() - executionStartTime;
+      const errorMessage = e.message || "Ошибка выполнения SQL";
+      
+      // Логирование ошибки выполнения SQL
+      const cleanSql = getCleanSql(sqlToExecute);
+      if (cleanSql) {
+        logAction({
+          action_type: 'sql_execution',
+          sql_query: cleanSql,
+          dialect: connDbType,
+          execution_time_ms: executionTime,
+          success: false,
+          error_message: errorMessage,
+        });
+      }
+      
+      toast("err", errorMessage);
     } finally {
       setExecutingSql(false);
     }
@@ -481,6 +567,30 @@ export default function Home() {
             {/* Счетчик токенов в header */}
             <TokenCounter />
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <Link
+              href="/logs"
+              style={{
+                background: "rgba(34, 211, 238, 0.1)",
+                color: "#22d3ee",
+                border: "1px solid rgba(34, 211, 238, 0.3)",
+                borderRadius: 10,
+                padding: "6px 14px",
+                textDecoration: "none",
+                fontWeight: 500,
+                fontSize: 14,
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "rgba(34, 211, 238, 0.2)";
+                e.currentTarget.style.borderColor = "rgba(34, 211, 238, 0.5)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "rgba(34, 211, 238, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(34, 211, 238, 0.3)";
+              }}
+            >
+              📜 История
+            </Link>
             <Link
               href="/tarify"
               style={{
@@ -564,7 +674,9 @@ export default function Home() {
             borderRadius: 16,
             background: "#0f172a",
             padding: 26,
-            width: 850,
+            maxWidth: "1400px",
+            width: "100%",
+            margin: "0 auto",
           }}
         >
           <div>
@@ -573,23 +685,12 @@ export default function Home() {
                 onLoaded={setSchemaJson} 
                 onToast={toast}
                 onConnectionString={(connStr, dbType) => {
-                  console.log("ConnectionString установлен:", connStr.substring(0, 50) + "...", "dbType:", dbType);
+                  // Не логируем connection strings (безопасность)
+                  console.log("Подключение установлено, dbType:", dbType);
                   setConnectionString(connStr);
                   setDbType(dbType);
                   setHasActiveConnection(true);
-                  // Также проверяем, что сохранилось в localStorage
-                  setTimeout(() => {
-                    const saved = localStorage.getItem("lastConnection");
-                    console.log("Проверка localStorage после подключения:", saved ? "есть" : "нет");
-                    if (saved) {
-                      try {
-                        const conn = JSON.parse(saved);
-                        setHasActiveConnection(!!conn.connectionString);
-                      } catch (e) {
-                        console.error("Ошибка парсинга lastConnection:", e);
-                      }
-                    }
-                  }, 100);
+                  // НЕ сохраняем connection string в localStorage (безопасность)
                 }}
               />
 
@@ -644,18 +745,48 @@ export default function Home() {
 
               <h3>Генерация SQL</h3>
               
-              {/* Загрузка файлов */}
-              <div style={{ marginBottom: 16 }}>
-                <FileUpload
-                  onFileLoaded={(content, name) => {
-                    setFileContent(content);
-                    setFileName(name);
-                    toast("ok", `Файл "${name}" загружен ✅`);
+              {/* Кнопки сверху - История запросов и Частые запросы (симметрично) */}
+              <div style={{ display: "flex", gap: "16px", marginTop: "20px", marginBottom: "16px", justifyContent: "center" }}>
+                <Link
+                  href="/logs"
+                  style={{
+                    width: "280px",
+                    padding: "10px 16px",
+                    background: "rgba(96, 165, 250, 0.1)",
+                    border: "1px solid rgba(96, 165, 250, 0.3)",
+                    borderRadius: "8px",
+                    color: "#60a5fa",
+                    textDecoration: "none",
+                    fontSize: "14px",
+                    fontWeight: 500,
+                    textAlign: "center",
+                    transition: "all 0.2s",
+                    display: "block",
                   }}
-                  onError={(error) => toast("err", error)}
-                />
+                  onMouseOver={(e) => {
+                    e.currentTarget.style.background = "rgba(96, 165, 250, 0.2)";
+                    e.currentTarget.style.borderColor = "rgba(96, 165, 250, 0.5)";
+                  }}
+                  onMouseOut={(e) => {
+                    e.currentTarget.style.background = "rgba(96, 165, 250, 0.1)";
+                    e.currentTarget.style.borderColor = "rgba(96, 165, 250, 0.3)";
+                  }}
+                >
+                  📜 История запросов
+                </Link>
+                <div style={{ width: "280px" }}>
+                  <FrequentQueriesDropdown
+                    onSelectQuery={(sql) => {
+                      setNl(sql);
+                      setTimeout(() => {
+                        onGenerate();
+                      }, 100);
+                    }}
+                  />
+                </div>
               </div>
 
+              {/* Поле ввода - на всю ширину, как было */}
               <textarea
                 placeholder="Например: 'Покажи имена и email клиентов...' или загрузите файл для анализа"
                 value={nl}
@@ -663,23 +794,61 @@ export default function Home() {
                 rows={5}
                 style={input}
               />
-              <div
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  marginTop: 10,
-                  fontSize: 14,
-                  opacity: 0.9,
-                }}
-              >
-                <input
-                  id="explain"
-                  type="checkbox"
-                  checked={explain}
-                  onChange={(e) => setExplain(e.target.checked)}
-                />
-                <label htmlFor="explain">Пояснить SQL</label>
+              
+              {/* Пояснить SQL и Загрузить файл - рядом */}
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", marginTop: 10 }}>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: 14,
+                    opacity: 0.9,
+                    padding: "10px 12px",
+                    background: "rgba(34, 211, 238, 0.05)",
+                    border: "1px solid rgba(34, 211, 238, 0.2)",
+                    borderRadius: "8px",
+                  }}
+                >
+                  <input
+                    id="explain"
+                    type="checkbox"
+                    checked={explain}
+                    onChange={(e) => setExplain(e.target.checked)}
+                    style={{
+                      width: "18px",
+                      height: "18px",
+                      cursor: "pointer",
+                      accentColor: "#22d3ee",
+                    }}
+                  />
+                  <label 
+                    htmlFor="explain" 
+                    style={{
+                      color: "#e5e7eb",
+                      fontSize: "14px",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    💡 Пояснить SQL
+                  </label>
+                </div>
+                <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: "8px" }}>
+                  <CompactFileUpload
+                    onFileLoaded={(content, name) => {
+                      setFileContent(content);
+                      setFileName(name);
+                      toast("ok", `Файл "${name}" загружен ✅`);
+                    }}
+                    onError={(error) => toast("err", error)}
+                    uploadedFile={fileName}
+                  />
+                  <span style={{ color: "#9ca3af", fontSize: "12px", whiteSpace: "nowrap" }}>
+                    .SQL, .CSV, .XLSX, .XLS, .JSON, .PDF, .DOC, .DOCX, .TXT
+                  </span>
+                </div>
               </div>
 
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
@@ -717,6 +886,7 @@ export default function Home() {
                     setFileContent(null);
                     setFileName(null);
                     setShowTableModal(null);
+                    setSqlWarning(null);
                   }}
                   style={btnSec}
                 >
@@ -726,6 +896,103 @@ export default function Home() {
 
               {generatedSql && (
                 <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+                  {/* Автоматическое предупреждение о возможных проблемах */}
+                  {(sqlWarning || reviewLoading) && (
+                    <div
+                      style={{
+                        background: "rgba(251, 191, 36, 0.1)",
+                        border: "1px solid rgba(251, 191, 36, 0.3)",
+                        borderRadius: "8px",
+                        padding: "12px 16px",
+                        position: "relative",
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px" }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "8px" }}>
+                            <span style={{ color: "#fbbf24", fontSize: "16px" }}>⚠️</span>
+                            <span style={{ color: "#fbbf24", fontSize: "14px", fontWeight: 600 }}>
+                              Предупреждение: запрос может упустить данные
+                            </span>
+                          </div>
+                          {reviewLoading ? (
+                            <div style={{ color: "#9ca3af", fontSize: "13px" }}>Анализирую запрос...</div>
+                          ) : sqlWarning ? (
+                            <>
+                              <div style={{ color: "#e5e7eb", fontSize: "13px", lineHeight: "1.5", marginBottom: "12px" }}>
+                                {sqlWarning}
+                              </div>
+                              <button
+                                onClick={async () => {
+                                  // Генерируем улучшенный SQL с учетом подсказки
+                                  if (!schemaJson) return toast("warn", "Сначала загрузите схему");
+                                  const currentQuery = nl.trim() || (fileContent ? `Проанализируй содержимое файла и помоги сформировать SQL запросы.\n\nКонтекст из файла "${fileName}":\n${fileContent}` : "");
+                                  
+                                  // Добавляем инструкцию с учетом предупреждения
+                                  const improvedQuery = `${currentQuery}\n\nВАЖНО: ${sqlWarning}\n\nСгенерируй улучшенный SQL запрос с учетом этого предупреждения.`;
+                                  
+                                  setLoading(true);
+                                  try {
+                                    const data = await generateSql(improvedQuery, schemaJson, dbType || "postgres");
+                                    if (data.blocked) return toast("err", "🚫 Запрос заблокирован политикой");
+
+                                    const sql = String(data.sql || "");
+                                    const finalSql = explain ? annotate(sql) : sql;
+                                    setGeneratedSql(finalSql);
+
+                                    const apiSavepoint = data?.withSafety ?? data?.variantSavepoint ?? null;
+                                    setSavepointSql(apiSavepoint);
+                                    setDanger(!!apiSavepoint || DANGER_RE.test(sql));
+
+                                    // Очищаем предупреждение после улучшения
+                                    setSqlWarning(null);
+                                    window.dispatchEvent(new Event('sql-generated'));
+                                  } catch (e: any) {
+                                    toast("err", e.message || "Ошибка генерации");
+                                  } finally {
+                                    setLoading(false);
+                                  }
+                                }}
+                                disabled={loading}
+                                style={{
+                                  padding: "8px 16px",
+                                  background: "rgba(34, 211, 238, 0.2)",
+                                  border: "1px solid rgba(34, 211, 238, 0.5)",
+                                  borderRadius: "6px",
+                                  color: "#22d3ee",
+                                  fontSize: "13px",
+                                  fontWeight: 500,
+                                  cursor: loading ? "not-allowed" : "pointer",
+                                  opacity: loading ? 0.5 : 1,
+                                }}
+                              >
+                                {loading ? "⏳ Генерирую..." : "🔄 Сгенерировать улучшенный запрос"}
+                              </button>
+                            </>
+                          ) : null}
+                        </div>
+                        <button
+                          onClick={() => setSqlWarning(null)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#9ca3af",
+                            fontSize: "18px",
+                            cursor: "pointer",
+                            padding: "0",
+                            width: "24px",
+                            height: "24px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          ×
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
                   {danger && (
                     <div
                       style={{
