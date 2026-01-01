@@ -172,8 +172,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           
           // Если подключение успешно, обновляем workingConnectionString
           workingConnectionString = variant;
-          break; // Прерываем цикл, так как подключение успешно
 
+          // Выполняем запрос для получения схемы
           const query = `
             SELECT
               table_name,
@@ -184,11 +184,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             ORDER BY table_name, ordinal_position;
           `;
 
+          console.log('[fetch-schema] Выполняем запрос для получения схемы...');
           const result = await client.query(query);
+          console.log(`[fetch-schema] Получено строк: ${result.rows.length}`);
+          
           result.rows.forEach((row) => {
             if (!schema[row.table_name]) schema[row.table_name] = [];
             schema[row.table_name].push(row.column_name);
           });
+          
+          console.log(`[fetch-schema] Обработано таблиц: ${Object.keys(schema).length}`);
           
           // Сохраняем успешный connection string для будущего использования
           if (normalized.provider === 'supabase' && variant !== connectionString) {
@@ -200,7 +205,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
           
           await client.end();
-          break; // Успешно подключились, выходим из цикла
+          break; // Успешно подключились и получили схему, выходим из цикла
         } catch (connectError: any) {
           lastError = connectError;
           console.log(`[fetch-schema] Вариант ${i + 1} не сработал: ${connectError.message?.substring(0, 100)}`);
