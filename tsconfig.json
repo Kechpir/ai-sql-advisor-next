@@ -31,5 +31,5 @@
 
   /* === Includes & Excludes === */
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx"],
-  "exclude": ["node_modules", ".next", "out", "snapshots"]
+  "exclude": ["node_modules", ".next", "out", "snapshots", "supabase"]
 }
