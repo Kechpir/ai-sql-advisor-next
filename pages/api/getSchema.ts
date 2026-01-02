@@ -3,6 +3,8 @@ import { Client as PgClient } from "pg";
 import mysql from "mysql2/promise";
 import sqlite3 from "sqlite3";
 import { open } from "sqlite";
+import { securityMiddleware } from '@/lib/middleware';
+import { checkConnectionOwnership } from '@/lib/auth';
 
 type SchemaResponse = {
   success: boolean;
@@ -14,14 +16,29 @@ export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<SchemaResponse>
 ) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ success: false, error: "Method not allowed" });
+  // Используем securityMiddleware для защиты
+  const { authorized, userId } = await securityMiddleware(req, res, {
+    requireAuth: true,
+    requireSubscription: 'free',
+    allowedMethods: ['POST', 'OPTIONS']
+  });
+
+  if (!authorized || !userId) {
+    return; // Ответ уже отправлен middleware
   }
 
   const { connectionString } = req.body;
 
   if (!connectionString) {
     return res.status(400).json({ success: false, error: "Missing connectionString" });
+  }
+
+  // Проверка принадлежности connection string пользователю
+  const authHeader = req.headers.authorization;
+  const jwt = authHeader?.replace(/^Bearer /i, '') || null;
+  const isOwner = await checkConnectionOwnership(userId, connectionString, jwt);
+  if (!isOwner) {
+    return res.status(403).json({ success: false, error: "Доступ запрещен: подключение не принадлежит пользователю" });
   }
 
   try {

@@ -1,56 +1,18 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from '@supabase/supabase-js';
-
-// CORS заголовки
-function setCorsHeaders(res: NextApiResponse, origin: string | undefined) {
-  const allowedOrigins = [
-    'https://ai-sql-advisor.vercel.app',
-    'https://ai-sql-advisor-next-stage.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001'
-  ];
-  
-  const originHeader = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
-  
-  res.setHeader('Access-Control-Allow-Origin', originHeader);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-}
-
-// Извлечение user_id из JWT токена
-function getUserIdFromJWT(jwt: string | null): string | null {
-  if (!jwt) return null;
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) {
-      console.warn('[generate-sql] JWT имеет неверный формат (не 3 части)');
-      return null;
-    }
-    // Безопасное декодирование base64
-    const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf-8'));
-    const userId = payload?.sub ?? null;
-    if (!userId) {
-      console.warn('[generate-sql] JWT не содержит sub (user_id)');
-    }
-    return userId;
-  } catch (err: any) {
-    console.warn('[generate-sql] Ошибка декодирования JWT:', err?.message || String(err));
-    return null;
-  }
-}
+import { securityMiddleware } from '@/lib/middleware';
+import { getUserIdFromJWT, getJWTFromRequest } from '@/lib/auth';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const origin = req.headers.origin;
-  setCorsHeaders(res, origin);
-  
-  // Обработка preflight запросов
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
-  
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Метод не поддерживается (требуется POST)" });
+  // Используем security middleware для CORS и авторизации
+  const { authorized, userId } = await securityMiddleware(req, res, {
+    requireAuth: true,
+    requireSubscription: 'free', // Минимальный план для генерации SQL
+    allowedMethods: ['POST', 'OPTIONS']
+  });
+
+  if (!authorized || !userId) {
+    return; // Ответ уже отправлен middleware
   }
 
   // Безопасное чтение тела запроса
@@ -70,15 +32,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   const { nl, schema, dialect = "postgres" } = body || {};
 
-  if (!nl || !schema) {
+  if (!nl) {
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    return res.status(400).json({ error: "Не переданы nl (запрос) или schema (схема БД)" });
+    return res.status(400).json({ error: "Не передан nl (запрос)" });
   }
 
-  // Проверка лимита токенов перед генерацией
-  const authHeader = req.headers.authorization;
-  const jwt = authHeader?.replace(/^Bearer /i, '') || null;
-  const userId = getUserIdFromJWT(jwt);
+  // Схема опциональна - генератор может работать без неё
+  const hasSchema = schema && (typeof schema === 'object' ? Object.keys(schema).length > 0 : schema.length > 0);
+
+  // Получаем JWT токен для проверки лимитов
+  const jwt = getJWTFromRequest(req);
 
   // КРИТИЧНО: Проверка лимита токенов ДО генерации SQL
   if (userId) {
@@ -104,21 +67,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           }
         );
 
-        // Проверка rate limit
-        const { data: rateLimitCheck, error: rateLimitError } = await supabase.rpc('check_rate_limit', {
-          user_uuid: userId,
-          endpoint_name: 'generate_sql',
-          limit_count: 10,
-          window_type: 'minute'
-        });
+        // Проверка rate limit (не блокируем запрос, если проверка не работает)
+        try {
+          const { data: rateLimitCheck, error: rateLimitError } = await supabase.rpc('check_rate_limit', {
+            user_uuid: userId,
+            endpoint_name: 'generate_sql',
+            limit_count: 10,
+            window_type: 'minute'
+          });
 
-        if (rateLimitError) {
-          console.error('[generate-sql] Ошибка проверки rate limit:', rateLimitError);
-          return res.status(500).json({ error: "Ошибка проверки лимита запросов" });
-        }
-
-        if (rateLimitCheck === false) {
-          return res.status(429).json({ error: "Превышен лимит запросов. Попробуйте позже." });
+          if (rateLimitError) {
+            // Логируем ошибку, но не блокируем запрос (rate limit может быть не настроен)
+            console.warn('[generate-sql] Ошибка проверки rate limit (продолжаем):', rateLimitError.message || rateLimitError);
+          } else if (rateLimitCheck === false) {
+            // Только если проверка прошла успешно и лимит превышен - блокируем
+            return res.status(429).json({ error: "Превышен лимит запросов. Попробуйте позже." });
+          }
+        } catch (rateLimitException: any) {
+          // Если RPC функция не существует или другая ошибка - просто логируем и продолжаем
+          console.warn('[generate-sql] Rate limit проверка недоступна (продолжаем):', rateLimitException.message || rateLimitException);
         }
 
         // КРИТИЧЕСКАЯ проверка лимита токенов - обязательна!
@@ -190,16 +157,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   try {
     // Формируем промпт для OpenAI
-    // Безопасная сериализация схемы
-    let schemaText: string;
-    try {
-      schemaText = typeof schema === "string" 
-        ? schema 
-        : JSON.stringify(schema, null, 2);
-    } catch (e) {
-      console.error("Ошибка сериализации схемы:", e);
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      return res.status(400).json({ error: "Неверный формат схемы БД" });
+    // Безопасная сериализация схемы (если есть)
+    let schemaText: string = '';
+    if (hasSchema) {
+      try {
+        schemaText = typeof schema === "string" 
+          ? schema 
+          : JSON.stringify(schema, null, 2);
+      } catch (e) {
+        console.error("Ошибка сериализации схемы:", e);
+        // Продолжаем без схемы, если не удалось сериализовать
+      }
     }
 
     // Проверяем, есть ли данные из файла в запросе
@@ -208,8 +176,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const prompt = `Ты - эксперт по SQL. Сгенерируй SQL запрос на основе следующего запроса на естественном языке.
 
 Диалект БД: ${dialect}
-Схема базы данных:
+${hasSchema ? `Схема базы данных:
 ${schemaText}
+
+ВАЖНО: Используй ТОЛЬКО таблицы и колонки из схемы выше. Если в запросе упоминаются таблицы/колонки, которых нет в схеме, используй наиболее подходящие из схемы или верни ошибку.` : `⚠️ Схема базы данных не предоставлена. Генерируй SQL запрос на основе описания пользователя, используя типичные имена таблиц и колонок для данного типа БД (${dialect}).
+
+Используй стандартные имена:
+- Для PostgreSQL: users, orders, products, customers, employees и т.д.
+- Для MySQL: аналогично PostgreSQL
+- Используй типичные колонки: id, name, email, created_at, updated_at, price, quantity и т.д.
+
+Если пользователь упоминает конкретные таблицы/колонки, используй их. Если нет - используй стандартные имена.`}
 
 Запрос пользователя: "${nl}"
 
@@ -217,7 +194,7 @@ ${hasFileContext ? "⚠️ ВНИМАНИЕ: В запросе содержит�
 
 Требования:
 1. Генерируй ТОЛЬКО SELECT запросы (read-only)
-2. Используй правильные имена таблиц и колонок из схемы
+2. ${hasSchema ? 'Используй правильные имена таблиц и колонок из схемы' : 'Используй стандартные имена таблиц и колонок для данного типа БД'}
 3. Если запрос требует изменения данных (INSERT, UPDATE, DELETE, DROP, ALTER), верни ошибку
 4. Верни только SQL запрос, без объяснений
 ${hasFileContext ? "5. Если в файле есть данные, которые нужно использовать для фильтрации или анализа, включи их в запрос" : ""}

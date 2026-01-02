@@ -7,6 +7,8 @@ import ConnectionsPanel from "@/components/SqlBuilderPanel/ConnectionsPanel";
 import DataTableModal from "@/components/tables/DataTableModal";
 import TableTabsBar from "@/components/tables/TableTabsBar";
 import TokenCounter from "@/components/common/TokenCounter";
+import FloatingAssistant from "@/components/common/FloatingAssistant";
+import OnboardingTour, { getConstructorSteps } from "@/components/common/OnboardingTour";
 
 interface TabData {
   id: string;
@@ -33,6 +35,9 @@ export default function SqlInterfacePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  
+  // Состояние туториала
+  const [tourRun, setTourRun] = useState(false);
 
   // Загружаем вкладки из sessionStorage при монтировании
   useEffect(() => {
@@ -69,6 +74,17 @@ export default function SqlInterfacePage() {
       sessionStorage.removeItem("constructorTabs");
     }
   }, [tabs]);
+
+  // Проверяем, нужно ли показать туториал при первом заходе
+  useEffect(() => {
+    const hasSeenTour = localStorage.getItem('hasSeenConstructorTour');
+    if (!hasSeenTour) {
+      // Небольшая задержка, чтобы страница успела загрузиться
+      setTimeout(() => {
+        setTourRun(true);
+      }, 1000);
+    }
+  }, []);
 
   // Определяем тип БД из строки подключения
   const detectDbType = (url: string): string => {
@@ -222,7 +238,31 @@ export default function SqlInterfacePage() {
         >
         <header className="text-center mb-8" style={{ position: "relative" }}>
           {/* Счетчик токенов в header */}
-          <div style={{ position: "absolute", top: 0, right: 0 }}>
+          <div style={{ position: "absolute", top: 0, right: 0, display: "flex", gap: "10px", alignItems: "center" }}>
+            <button
+              onClick={() => setTourRun(true)}
+              style={{
+                background: "rgba(34, 211, 238, 0.1)",
+                color: "#22d3ee",
+                border: "1px solid rgba(34, 211, 238, 0.3)",
+                borderRadius: 10,
+                padding: "6px 14px",
+                cursor: "pointer",
+                fontWeight: 500,
+                fontSize: 14,
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "rgba(34, 211, 238, 0.2)";
+                e.currentTarget.style.borderColor = "rgba(34, 211, 238, 0.5)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "rgba(34, 211, 238, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(34, 211, 238, 0.3)";
+              }}
+            >
+              📚 Пройти обучение
+            </button>
             <TokenCounter />
           </div>
           <h1 className="text-3xl font-bold text-[#00d8ff] tracking-wide drop-shadow-lg">
@@ -302,6 +342,7 @@ export default function SqlInterfacePage() {
               {loading ? "⏳ Выполняется..." : "🔄 Обновить схему"}
             </button>
             <button
+              data-tour="constructor-execute"
               className="btn btn-main"
               onClick={handleExecute}
               disabled={!connectionString || loading}
@@ -312,13 +353,15 @@ export default function SqlInterfacePage() {
         </div>
 
         {/* 🔌 Панель подключений */}
-        <ConnectionsPanel
-          onConnect={(url) => {
-            setConnectionString(url);
-            setDbType(detectDbType(url));
-            fetchSchema(url);
-          }}
-        />
+        <div data-tour="constructor-connection">
+          <ConnectionsPanel
+            onConnect={(url) => {
+              setConnectionString(url);
+              setDbType(detectDbType(url));
+              fetchSchema(url);
+            }}
+          />
+        </div>
 
         {/* Панели SQL */}
         <h3
@@ -333,25 +376,31 @@ export default function SqlInterfacePage() {
         >
           ⚙️ Основные SQL операции
         </h3>
-        <BaseSqlPanel
-          schema={schema}
-          selectedTable={selectedTable}
-          setSelectedTable={setSelectedTable}
-          onChange={setBaseSql}
-          onExecute={handleExecute}
-        />
+        <div data-tour="constructor-base">
+          <BaseSqlPanel
+            schema={schema}
+            selectedTable={selectedTable}
+            setSelectedTable={setSelectedTable}
+            onChange={setBaseSql}
+            onExecute={handleExecute}
+          />
+        </div>
 
-        <AdvancedSqlPanel
-          schema={schema}
-          selectedTable={selectedTable}
-          onChange={setAdvancedSql}
-        />
+        <div data-tour="constructor-advanced">
+          <AdvancedSqlPanel
+            schema={schema}
+            selectedTable={selectedTable}
+            onChange={setAdvancedSql}
+          />
+        </div>
 
-        <ExpertSqlPanel
-          schema={schema}
-          selectedTable={selectedTable}
-          onChange={setExpertSql}
-        />
+        <div data-tour="constructor-expert">
+          <ExpertSqlPanel
+            schema={schema}
+            selectedTable={selectedTable}
+            onChange={setExpertSql}
+          />
+        </div>
 
         {/* Ошибки */}
         {error && (
@@ -523,7 +572,24 @@ export default function SqlInterfacePage() {
           )}
         </button>
       )}
+      
+      {/* Плавающий помощник */}
+      <FloatingAssistant context="builder" />
       </main>
+      
+      {/* ---- ONBOARDING TOUR ---- */}
+      <OnboardingTour
+        steps={getConstructorSteps()}
+        run={tourRun}
+        onComplete={() => {
+          localStorage.setItem('hasSeenConstructorTour', 'true');
+          setTourRun(false);
+        }}
+        onSkip={() => {
+          localStorage.setItem('hasSeenConstructorTour', 'true');
+          setTourRun(false);
+        }}
+      />
     </>
   );
 }

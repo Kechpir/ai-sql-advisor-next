@@ -35,9 +35,7 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
     const loadConnections = async () => {
       const jwt = localStorage.getItem('jwt');
       if (!jwt) {
-        // Fallback на localStorage, если нет авторизации
-        const stored = localStorage.getItem("savedConnections");
-        if (stored) setSavedConnections(JSON.parse(stored));
+        // Без авторизации подключения не загружаются (безопасность)
         return;
       }
 
@@ -90,9 +88,7 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
         }
       } catch (err) {
         console.error('Ошибка загрузки подключений:', err);
-        // Fallback на localStorage
-        const stored = localStorage.getItem("savedConnections");
-        if (stored) setSavedConnections(JSON.parse(stored));
+        // НЕ используем localStorage fallback (безопасность)
       }
     };
 
@@ -212,11 +208,16 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
     
     const updated = [...savedConnections.filter((c) => c.name !== connName), newConn];
     setSavedConnections(updated);
-    localStorage.setItem("savedConnections", JSON.stringify(updated));
     
-    // Сохраняем в Supabase
+    // НЕ сохраняем в localStorage (безопасность - пароли не должны храниться в браузере)
+    // Сохраняем только в Supabase (с шифрованием)
     const jwt = localStorage.getItem('jwt');
-    if (jwt) {
+    if (!jwt) {
+      onToast("warn", "Необходима авторизация для сохранения подключения");
+      return;
+    }
+    
+    try {
       try {
         await fetch('/api/save-connection', {
           method: 'POST',
@@ -229,10 +230,15 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
             connectionString: connectionString,
           }),
         });
+        
+        if (!res.ok) {
+          throw new Error('Ошибка сохранения подключения');
+        }
       } catch (err) {
         console.error('Ошибка сохранения подключения в Supabase:', err);
+        onToast("err", "Не удалось сохранить подключение");
+        return;
       }
-    }
     
     onToast("ok", `💾 Сохранено: ${connName}`);
     setConnName("");
@@ -257,21 +263,30 @@ export default function DbConnect({ onLoaded, onToast }: Props) {
   const deleteConnection = async (name: string) => {
     const updated = savedConnections.filter((c) => c.name !== name);
     setSavedConnections(updated);
-    localStorage.setItem("savedConnections", JSON.stringify(updated));
     
-    // Удаляем из Supabase
+    // НЕ сохраняем в localStorage (безопасность)
+    // Удаляем только из Supabase
     const jwt = localStorage.getItem('jwt');
-    if (jwt) {
-      try {
-        await fetch(`/api/save-connection?name=${encodeURIComponent(name)}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${jwt}`,
-          },
-        });
-      } catch (err) {
-        console.error('Ошибка удаления подключения из Supabase:', err);
+    if (!jwt) {
+      onToast("warn", "Необходима авторизация для удаления подключения");
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/save-connection?name=${encodeURIComponent(name)}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+        },
+      });
+      
+      if (!res.ok) {
+        throw new Error('Ошибка удаления подключения');
       }
+    } catch (err) {
+      console.error('Ошибка удаления подключения из Supabase:', err);
+      onToast("err", "Не удалось удалить подключение");
+      return;
     }
     
     onToast("ok", `🗑 Удалено: ${name}`);

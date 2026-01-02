@@ -31,14 +31,12 @@ export default function ConnectionsPanel({ onConnect }: Props) {
 
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Загружаем сохранённые соединения из Supabase
+  // Загружаем сохранённые соединения из Supabase (только для авторизованных пользователей)
   useEffect(() => {
     const loadConnections = async () => {
       const jwt = localStorage.getItem('jwt');
       if (!jwt) {
-        // Fallback на localStorage, если нет авторизации
-        const saved = localStorage.getItem("savedConnections");
-        if (saved) setConnections(JSON.parse(saved));
+        // Без авторизации подключения не загружаются (безопасность)
         return;
       }
 
@@ -92,9 +90,7 @@ export default function ConnectionsPanel({ onConnect }: Props) {
         }
       } catch (err) {
         console.error('Ошибка загрузки подключений:', err);
-        // Fallback на localStorage
-        const saved = localStorage.getItem("savedConnections");
-        if (saved) setConnections(JSON.parse(saved));
+        // НЕ используем localStorage fallback (безопасность)
       }
     };
 
@@ -121,12 +117,14 @@ export default function ConnectionsPanel({ onConnect }: Props) {
   const saveConnections = async (list: Connection[]) => {
     const jwt = localStorage.getItem('jwt');
     
-    // Сохраняем в localStorage для fallback
-    localStorage.setItem("savedConnections", JSON.stringify(list));
+    // НЕ сохраняем в localStorage (безопасность - пароли не должны храниться в браузере)
     setConnections(list);
 
-    // Сохраняем в Supabase, если авторизован
-    if (!jwt) return;
+    // Сохраняем только в Supabase (с шифрованием)
+    if (!jwt) {
+      console.warn('Попытка сохранить подключение без авторизации');
+      return;
+    }
 
     try {
       // Сохраняем каждое подключение
@@ -161,7 +159,6 @@ export default function ConnectionsPanel({ onConnect }: Props) {
       }
     } catch (err) {
       console.error('Ошибка сохранения подключений в Supabase:', err);
-      // Игнорируем ошибку, так как уже сохранили в localStorage
     }
   };
 

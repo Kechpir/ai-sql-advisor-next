@@ -5,14 +5,18 @@ import sqlite3 from "sqlite3";
 import { open } from "sqlite";
 import { jsonToSql } from "@/lib/db/jsonToSql";
 import { checkAuth, checkConnectionOwnership } from '@/lib/auth';
+import { securityMiddleware } from '@/lib/middleware';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
+  // Используем security middleware для CORS и авторизации
+  const { authorized, userId } = await securityMiddleware(req, res, {
+    requireAuth: true,
+    requireSubscription: 'free', // Минимальный план для выполнения запросов
+    allowedMethods: ['POST', 'OPTIONS']
+  });
 
-  // Проверка авторизации
-  const userId = checkAuth(req);
-  if (!userId) {
-    return res.status(401).json({ error: "Не авторизован" });
+  if (!authorized || !userId) {
+    return; // Ответ уже отправлен middleware
   }
 
   const { connectionString, query, dbType, ...jsonQuery } = req.body;
@@ -56,6 +60,93 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const dangerKeywords = /DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|GRANT|REVOKE|EXEC|EXECUTE|CALL/i;
   if (dangerKeywords.test(sqlQuery)) {
     return res.status(400).json({ error: "❌ Dangerous operations are not allowed" });
+  }
+
+  // Разрешаем безопасные запросы к information_schema для получения метаданных (списки таблиц, колонок)
+  // Это нужно для запросов типа "покажи какие таблицы есть в базе"
+  const safeInformationSchemaPatterns = [
+    /FROM\s+information_schema\.tables/i,
+    /FROM\s+information_schema\.columns/i,
+    /FROM\s+information_schema\.table_constraints/i,
+    /FROM\s+information_schema\.key_column_usage/i,
+  ];
+  
+  const isSafeInformationSchemaQuery = safeInformationSchemaPatterns.some(pattern => 
+    pattern.test(sqlQuery)
+  ) && 
+  // Дополнительная проверка: только простые SELECT без опасных операций
+  !/UNION|EXCEPT|INTERSECT|WITH\s+RECURSIVE/i.test(sqlQuery) &&
+  // Не должно быть JOIN с другими системными таблицами
+  !/JOIN\s+(pg_|mysql\.|sys\.|performance_schema\.)/i.test(sqlQuery);
+
+  // Блокируем доступ к системным таблицам (улучшенная защита от SQL Injection)
+  // Проверяем только системные схемы, не блокируем пользовательские таблицы с похожими именами
+  // НО: разрешаем безопасные запросы к information_schema для метаданных
+  if (!isSafeInformationSchemaQuery) {
+    const systemTablePatterns = [
+      // Системные схемы PostgreSQL
+      /FROM\s+information_schema\./i,
+      /FROM\s+pg_catalog\./i,
+      /FROM\s+pg_toast\./i,
+      /FROM\s+pg_temp\./i,
+      /FROM\s+pg_toast_temp\./i,
+      // Системные схемы MySQL
+      /FROM\s+mysql\./i,
+      /FROM\s+performance_schema\./i,
+      /FROM\s+sys\./i,
+      // То же для JOIN
+      /JOIN\s+information_schema\./i,
+      /JOIN\s+pg_catalog\./i,
+      /JOIN\s+pg_toast\./i,
+      /JOIN\s+pg_temp\./i,
+      /JOIN\s+pg_toast_temp\./i,
+      /JOIN\s+mysql\./i,
+      /JOIN\s+performance_schema\./i,
+      /JOIN\s+sys\./i,
+      // INTO
+      /INTO\s+information_schema\./i,
+      /INTO\s+pg_catalog\./i,
+      /INTO\s+pg_toast\./i,
+      /INTO\s+pg_temp\./i,
+      /INTO\s+pg_toast_temp\./i,
+      /INTO\s+mysql\./i,
+      /INTO\s+performance_schema\./i,
+      /INTO\s+sys\./i,
+    ];
+    
+    for (const pattern of systemTablePatterns) {
+      if (pattern.test(sqlQuery)) {
+        return res.status(400).json({ error: "❌ Access to system tables is not allowed" });
+      }
+    }
+  }
+
+  // Дополнительно: блокируем известные опасные системные таблицы PostgreSQL (без схемы)
+  // Только самые опасные системные таблицы
+  const dangerousSystemTables = [
+    'pg_database', 'pg_user', 'pg_shadow', 'pg_authid', 'pg_auth_members',
+    'pg_roles', 'pg_settings', 'pg_stat_activity', 'pg_locks'
+  ];
+
+  for (const table of dangerousSystemTables) {
+    // Проверяем, что это именно системная таблица, а не часть названия пользовательской таблицы
+    const regex = new RegExp(`\\bFROM\\s+${table}\\b`, 'i');
+    if (regex.test(sqlQuery)) {
+      return res.status(400).json({ error: "❌ Access to system tables is not allowed" });
+    }
+  }
+
+  // Блокируем подозрительные конструкции (улучшенная защита)
+  const suspiciousPatterns = [
+    /;\s*(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|GRANT|REVOKE)/i, // Множественные запросы с опасными операциями
+    /--.*(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|GRANT|REVOKE)/i, // Комментарии с опасными операциями
+    /\/\*.*(DROP|DELETE|UPDATE|INSERT|ALTER|TRUNCATE|CREATE|GRANT|REVOKE).*\*\//i, // Многострочные комментарии
+  ];
+  
+  for (const pattern of suspiciousPatterns) {
+    if (pattern.test(sqlQuery)) {
+      return res.status(400).json({ error: "❌ Suspicious SQL pattern detected" });
+    }
   }
 
   // Максимальная длина запроса (защита от DoS)

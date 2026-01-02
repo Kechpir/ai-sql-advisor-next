@@ -2,21 +2,23 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Client } from "pg";
 import mysql from "mysql2/promise";
-import { checkAuth, checkConnectionOwnership } from '@/lib/auth';
+import { checkConnectionOwnership, getJWTFromRequest } from '@/lib/auth';
 import { detectDbType } from '@/lib/db/detectDbType';
 import { normalizeConnectionString, getSupabaseConnectionVariants } from '@/lib/db/normalizeConnectionString';
+import { securityMiddleware } from '@/lib/middleware';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Оборачиваем весь handler в try-catch для перехвата любых ошибок
   try {
-    if (req.method !== "POST") {
-      return res.status(405).json({ error: "Метод не поддерживается (требуется POST)" });
-    }
+    // Используем security middleware для CORS и авторизации
+    const { authorized, userId } = await securityMiddleware(req, res, {
+      requireAuth: true,
+      requireSubscription: 'free', // Минимальный план для получения схемы
+      allowedMethods: ['POST', 'OPTIONS']
+    });
 
-    // Проверка авторизации
-    const userId = checkAuth(req);
-    if (!userId) {
-      return res.status(401).json({ error: "Не авторизован" });
+    if (!authorized || !userId) {
+      return; // Ответ уже отправлен middleware
     }
 
     const { connectionString } = req.body;
@@ -25,8 +27,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     // Получаем JWT токен для передачи в проверку (нужен для RLS)
-    const authHeader = req.headers.authorization;
-    const jwt = authHeader?.replace(/^Bearer /i, '') || null;
+    const jwt = getJWTFromRequest(req);
 
     // Проверка принадлежности connection string пользователю
     console.log('[fetch-schema] Проверка принадлежности connection string пользователю...');

@@ -33,15 +33,115 @@ export default function ConnectionManager({ onConnected, onError }: Props) {
   });
   const [loading, setLoading] = useState(false);
 
-  // === LocalStorage загрузка ===
+  // === Загрузка из Supabase (только для авторизованных пользователей) ===
   useEffect(() => {
-    const saved = localStorage.getItem("dbConnections");
-    if (saved) setConnections(JSON.parse(saved));
+    const loadConnections = async () => {
+      const jwt = localStorage.getItem('jwt');
+      if (!jwt) {
+        // Без авторизации подключения не загружаются (безопасность)
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/save-connection', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`,
+          },
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.connections) {
+            // Преобразуем формат из API в формат Connection
+            const formattedConnections: Connection[] = data.connections.map((conn: any) => {
+              let parsed: any = {
+                host: conn.host || '',
+                port: '5432',
+                database: conn.database || '',
+                user: '',
+                password: '', // Пароль не извлекаем для безопасности
+                dialect: conn.dbType || 'PostgreSQL',
+              };
+              
+              try {
+                if (conn.connectionString) {
+                  const url = new URL(conn.connectionString);
+                  parsed = {
+                    host: url.hostname || conn.host || '',
+                    port: url.port || '5432',
+                    database: url.pathname.replace('/', '') || conn.database || '',
+                    user: url.username || '',
+                    password: '', // Пароль не извлекаем для безопасности
+                    dialect: conn.dbType || 'PostgreSQL',
+                  };
+                }
+              } catch {
+                // Если не удалось распарсить, используем данные из БД
+              }
+              
+              return {
+                name: conn.name,
+                ...parsed,
+              };
+            });
+            setConnections(formattedConnections);
+          }
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки подключений:', err);
+        // НЕ используем localStorage fallback (безопасность)
+      }
+    };
+
+    loadConnections();
   }, []);
 
-  const saveConnections = (list: Connection[]) => {
-    localStorage.setItem("dbConnections", JSON.stringify(list));
+  const saveConnections = async (list: Connection[]) => {
     setConnections(list);
+    
+    // Сохраняем только в Supabase (с шифрованием)
+    const jwt = localStorage.getItem('jwt');
+    if (!jwt) {
+      console.warn('Попытка сохранить подключение без авторизации');
+      return;
+    }
+
+    try {
+      // Сохраняем каждое подключение
+      for (const conn of list) {
+        // Формируем connection string
+        let connectionString = '';
+        const dialect = conn.dialect.toLowerCase();
+        const port = conn.port || (dialect.includes("mysql") ? "3306" : "5432");
+        const password = conn.password ? `:${encodeURIComponent(conn.password)}` : "";
+        
+        if (dialect.includes("postgres")) {
+          connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        } else if (dialect.includes("mysql")) {
+          connectionString = `mysql://${conn.user}${password}@${conn.host}:${port}/${conn.database}`;
+        } else if (dialect.includes("sqlite")) {
+          connectionString = `file:${conn.database}`;
+        } else {
+          connectionString = `postgresql://${conn.user}${password}@${conn.host}:${port}/${conn.database}?sslmode=require`;
+        }
+
+        await fetch('/api/save-connection', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${jwt}`,
+          },
+          body: JSON.stringify({
+            name: conn.name,
+            connectionString: connectionString,
+          }),
+        });
+      }
+    } catch (err) {
+      console.error('Ошибка сохранения подключений в Supabase:', err);
+    }
   };
 
   const addConnection = () => {
@@ -70,19 +170,38 @@ export default function ConnectionManager({ onConnected, onError }: Props) {
 
   // === Подключение к БД ===
   const connectDb = async () => {
+    const jwt = localStorage.getItem('jwt');
+    if (!jwt) {
+      onError?.("Необходима авторизация для подключения к базе данных");
+      return;
+    }
+
     setLoading(true);
     try {
       const db_url = makeDbUrl(conn);
-      const res = await fetch(SUPABASE_FETCH_URL, {
+      
+      // Используем локальный API вместо прямого вызова Supabase Edge Function
+      const res = await fetch("/api/fetch-schema", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ db_url, schema: "public" }),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${jwt}`,
+        },
+        body: JSON.stringify({ connectionString: db_url }),
       });
 
       const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Ошибка подключения");
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Ошибка подключения");
+      }
 
-      onConnected(data);
+      // Преобразуем формат ответа
+      const schemaData = {
+        tables: data.schema || {},
+        countTables: data.tables?.length || Object.keys(data.schema || {}).length,
+      };
+
+      onConnected(schemaData);
       addConnection();
     } catch (e: any) {
       onError?.(e.message);

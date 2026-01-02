@@ -411,3 +411,67 @@ input:focus, textarea:focus, select:focus {
     transform: translate(-50%, -50%) rotate(-30deg) rotate(360deg) translateX(22.5px) translateY(-7.5px) rotate(30deg) rotate(-360deg);
   }
 }
+
+/* ===== ONBOARDING TOUR SPOTLIGHT ===== */
+@keyframes pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4), 0 0 50px rgba(34, 211, 238, 1), 0 0 100px rgba(34, 211, 238, 0.6), inset 0 0 40px rgba(34, 211, 238, 0.5);
+    border-color: rgba(34, 211, 238, 1);
+  }
+  50% {
+    box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4), 0 0 70px rgba(34, 211, 238, 1), 0 0 140px rgba(34, 211, 238, 0.8), inset 0 0 50px rgba(34, 211, 238, 0.7);
+    border-color: rgba(34, 211, 238, 1);
+  }
+}
+
+/* Убираем стрелку у тултипов */
+.react-joyride__tooltip [class*="arrow"],
+.react-joyride__tooltip [class*="Arrow"],
+[data-joyride="tooltip"] [class*="arrow"],
+[data-joyride="tooltip"] [class*="Arrow"] {
+  display: none !important;
+}
+
+/* Улучшенная подсветка для элементов туториала */
+[data-joyride="spotlight"] {
+  border-radius: 12px !important;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4), 0 0 50px rgba(34, 211, 238, 1), 0 0 100px rgba(34, 211, 238, 0.6), inset 0 0 40px rgba(34, 211, 238, 0.5) !important;
+  border: 4px solid rgba(34, 211, 238, 1) !important;
+  animation: pulse 2s ease-in-out infinite !important;
+  z-index: 9999 !important;
+  pointer-events: none !important; /* Spotlight не блокирует клики */
+}
+
+/* Подсветка для элементов, на которые указывает туториал */
+.react-joyride__spotlight {
+  border-radius: 12px !important;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.4), 0 0 50px rgba(34, 211, 238, 1), 0 0 100px rgba(34, 211, 238, 0.6), inset 0 0 40px rgba(34, 211, 238, 0.5) !important;
+  border: 4px solid rgba(34, 211, 238, 1) !important;
+  animation: pulse 2s ease-in-out infinite !important;
+  z-index: 9999 !important;
+  pointer-events: none !important; /* Spotlight не блокирует клики */
+}
+
+/* Элементы под spotlight должны быть доступны */
+.react-joyride__spotlight * {
+  pointer-events: auto !important;
+}
+
+/* Убеждаемся, что элементы с data-tour доступны для взаимодействия */
+[data-tour] {
+  position: relative !important;
+  z-index: 10000 !important;
+  pointer-events: auto !important;
+}
+
+/* Анимация появления tooltip для помощника */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

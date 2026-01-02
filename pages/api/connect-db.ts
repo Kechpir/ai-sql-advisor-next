@@ -1,18 +1,21 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { Client } from "pg";
-import { checkAuth, checkConnectionOwnership } from '@/lib/auth';
+import { checkConnectionOwnership } from '@/lib/auth';
+import { securityMiddleware } from '@/lib/middleware';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Метод не поддерживается" });
+  // Используем securityMiddleware для защиты
+  const { authorized, userId } = await securityMiddleware(req, res, {
+    requireAuth: true,
+    requireSubscription: 'free',
+    allowedMethods: ['POST', 'OPTIONS']
+  });
+
+  if (!authorized || !userId) {
+    return; // Ответ уже отправлен middleware
   }
 
   try {
-    // Проверка авторизации
-    const userId = checkAuth(req);
-    if (!userId) {
-      return res.status(401).json({ error: "Не авторизован" });
-    }
 
     const { connectionString } = req.body;
 

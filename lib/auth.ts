@@ -97,8 +97,10 @@ export async function checkConnectionOwnership(userId: string, connectionString:
       }
     });
     
-    console.log('[checkConnectionOwnership] Проверка принадлежности для userId:', userId.substring(0, 8) + '...');
-    console.log('[checkConnectionOwnership] Connection string (первые 50 символов):', connectionString.substring(0, 50) + '...');
+    // Логируем только ID пользователя (безопасность - не логируем connection strings)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[checkConnectionOwnership] Проверка принадлежности для userId:', userId.substring(0, 8) + '...');
+    }
     
     // Получаем все подключения пользователя
     const { data, error } = await supabase

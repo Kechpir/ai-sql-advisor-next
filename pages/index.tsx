@@ -10,6 +10,8 @@ import DataTableModal from "@/components/tables/DataTableModal";
 import TableTabsBar from "@/components/tables/TableTabsBar";
 import TokenCounter from "@/components/common/TokenCounter";
 import LimitModal from "@/components/common/LimitModal";
+import FloatingAssistant from "@/components/common/FloatingAssistant";
+import OnboardingTour, { getMainPageSteps } from "@/components/common/OnboardingTour";
 import { generateSql, saveSchema, logAction, reviewSql } from "@/lib/api";
 
 /* -------------------- CONSTANTS -------------------- */
@@ -92,6 +94,9 @@ export default function Home() {
   } | null>(null);
   const [executingSql, setExecutingSql] = useState(false);
   
+  // Состояние туториала
+  const [tourRun, setTourRun] = useState(false);
+  
   // Управление вкладками (свернутые модальные окна)
   interface TabData {
     id: string;
@@ -165,6 +170,19 @@ export default function Home() {
   }, [tabs]);
 
 
+  // Проверяем, нужно ли показать туториал при первом заходе
+  useEffect(() => {
+    if (signedIn) {
+      const hasSeenTour = localStorage.getItem('hasSeenMainTour');
+      if (!hasSeenTour) {
+        // Небольшая задержка, чтобы страница успела загрузиться
+        setTimeout(() => {
+          setTourRun(true);
+        }, 1000);
+      }
+    }
+  }, [signedIn]);
+
   /* -------------------- AUTH GUARD -------------------- */
   useEffect(() => {
     try {
@@ -187,8 +205,8 @@ export default function Home() {
 
   /* -------------------- ACTIONS -------------------- */
   const onGenerate = async () => {
-    if (!schemaJson) return toast("warn", "Сначала загрузите схему");
     if (!nl.trim() && !fileContent) return toast("warn", "Введите задачу или загрузите файл");
+    // Схема опциональна - генератор может работать без неё
     setLoading(true);
     
     // Формируем запрос с учетом файла
@@ -200,7 +218,7 @@ export default function Home() {
     
     try {
 
-      const data = await generateSql(query, schemaJson, "postgres");
+      const data = await generateSql(query, schemaJson || {}, "postgres");
       if (data.blocked) return toast("err", "🚫 Запрос заблокирован политикой");
 
       const sql = String(data.sql || "");
@@ -358,7 +376,7 @@ export default function Home() {
       
       try {
 
-        const data = await generateSql(query, schemaJson, "postgres");
+        const data = await generateSql(query, schemaJson || {}, "postgres");
         if (data.blocked) {
           toast("err", "🚫 Запрос заблокирован политикой");
           setLoading(false);
@@ -572,6 +590,33 @@ export default function Home() {
             {/* Счетчик токенов в header */}
             <TokenCounter />
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              onClick={() => {
+                setTourRun(false); // Сначала сбрасываем, чтобы гарантировать перезапуск
+                setTimeout(() => setTourRun(true), 100);
+              }}
+              style={{
+                background: "rgba(34, 211, 238, 0.1)",
+                color: "#22d3ee",
+                border: "1px solid rgba(34, 211, 238, 0.3)",
+                borderRadius: 10,
+                padding: "6px 14px",
+                cursor: "pointer",
+                fontWeight: 500,
+                fontSize: 14,
+                transition: "all 0.2s",
+              }}
+              onMouseOver={(e) => {
+                e.currentTarget.style.background = "rgba(34, 211, 238, 0.2)";
+                e.currentTarget.style.borderColor = "rgba(34, 211, 238, 0.5)";
+              }}
+              onMouseOut={(e) => {
+                e.currentTarget.style.background = "rgba(34, 211, 238, 0.1)";
+                e.currentTarget.style.borderColor = "rgba(34, 211, 238, 0.3)";
+              }}
+            >
+              📚 Пройти обучение
+            </button>
             <Link
               href="/logs"
               style={{
@@ -647,6 +692,7 @@ export default function Home() {
         <div style={{ display: "flex", justifyContent: "center", margin: "10px 0 30px" }}>
           <Link
             href="/sql-interface"
+            data-tour="constructor-link"
             style={{
               display: "inline-block",
               padding: "12px 26px",
@@ -698,7 +744,8 @@ export default function Home() {
                   // НЕ сохраняем connection string в localStorage (безопасность)
                 }}
               />
-
+              </div>
+              
               {schemaJson && (
                 <>
                   <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -793,6 +840,7 @@ export default function Home() {
 
               {/* Поле ввода - на всю ширину, как было */}
               <textarea
+                data-tour="query-input"
                 placeholder="Например: 'Покажи имена и email клиентов...' или загрузите файл для анализа"
                 value={nl}
                 onChange={(e) => setNl(e.target.value)}
@@ -857,12 +905,18 @@ export default function Home() {
               </div>
 
               <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                <button onClick={onGenerate} disabled={loading} style={btnMain}>
+                <button 
+                  data-tour="generate-button"
+                  onClick={onGenerate} 
+                  disabled={loading} 
+                  style={btnMain}
+                >
                   {loading ? "⏳ Генерируем…" : "Сгенерировать"}
                 </button>
                 <button
+                  data-tour="show-table"
                   onClick={handleShowTable}
-                  disabled={executingSql || loading || !hasActiveConnection || !schemaJson || (!nl.trim() && !fileContent)}
+                  disabled={executingSql || loading || (!nl.trim() && !fileContent)}
                   title={
                     !hasActiveConnection
                       ? "Сначала подключитесь к базе данных"
@@ -876,8 +930,8 @@ export default function Home() {
                   }
                   style={{
                     ...btnMain,
-                    opacity: (executingSql || loading || !hasActiveConnection || !schemaJson || (!nl.trim() && !fileContent)) ? 0.5 : 1,
-                    cursor: (executingSql || loading || !hasActiveConnection || !schemaJson || (!nl.trim() && !fileContent)) ? "not-allowed" : "pointer",
+                    opacity: (executingSql || loading || (!nl.trim() && !fileContent)) ? 0.5 : 1,
+                    cursor: (executingSql || loading || (!nl.trim() && !fileContent)) ? "not-allowed" : "pointer",
                   }}
                 >
                   {loading ? "⏳ Генерируем…" : executingSql ? "⏳ Выполняется…" : "📊 Показать таблицу"}
@@ -930,7 +984,7 @@ export default function Home() {
                               <button
                                 onClick={async () => {
                                   // Генерируем улучшенный SQL с учетом подсказки
-                                  if (!schemaJson) return toast("warn", "Сначала загрузите схему");
+                                  // Схема опциональна - генератор может работать без неё
                                   const currentQuery = nl.trim() || (fileContent ? `Проанализируй содержимое файла и помоги сформировать SQL запросы.\n\nКонтекст из файла "${fileName}":\n${fileContent}` : "");
                                   
                                   // Добавляем инструкцию с учетом предупреждения
@@ -938,7 +992,7 @@ export default function Home() {
                                   
                                   setLoading(true);
                                   try {
-                                    const data = await generateSql(improvedQuery, schemaJson, dbType || "postgres");
+                                    const data = await generateSql(improvedQuery, schemaJson || {}, dbType || "postgres");
                                     if (data.blocked) return toast("err", "🚫 Запрос заблокирован политикой");
 
                                     const sql = String(data.sql || "");
@@ -1050,9 +1104,8 @@ export default function Home() {
                   )}
                 </div>
               )}
-            </div>
+          </div>
         </div>
-      </div>
 
       {/* ---- MODAL ---- */}
       {/* Приоритет отдаем showTableModal (новое окно), если его нет - activeTabId (окно из вкладки) */}
@@ -1227,6 +1280,25 @@ export default function Home() {
           </button>
         </div>
       )}
+      
+      {/* Плавающий помощник */}
+      <div data-tour="assistant">
+        <FloatingAssistant context="assistant" />
+      </div>
+      
+      {/* ---- ONBOARDING TOUR ---- */}
+      <OnboardingTour
+        steps={getMainPageSteps()}
+        run={tourRun}
+        onComplete={() => {
+          localStorage.setItem('hasSeenMainTour', 'true');
+          setTourRun(false);
+        }}
+        onSkip={() => {
+          localStorage.setItem('hasSeenMainTour', 'true');
+          setTourRun(false);
+        }}
+      />
     </div>
   );
 }

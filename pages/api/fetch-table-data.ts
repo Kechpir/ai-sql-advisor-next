@@ -1,9 +1,23 @@
 // pages/api/fetch-table-data.ts
+// ⚠️ ТЕСТОВЫЙ ENDPOINT - ТОЛЬКО ДЛЯ РАЗРАБОТКИ
 import type { NextApiRequest, NextApiResponse } from "next";
+import { securityMiddleware } from '@/lib/middleware';
 
-export default function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ error: "Метод не поддерживается" });
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Блокируем в production (только для разработки)
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ error: "Endpoint не найден" });
+  }
+
+  // Используем securityMiddleware для защиты
+  const { authorized, userId } = await securityMiddleware(req, res, {
+    requireAuth: true,
+    requireSubscription: 'free',
+    allowedMethods: ['POST', 'OPTIONS']
+  });
+
+  if (!authorized || !userId) {
+    return; // Ответ уже отправлен middleware
   }
 
   const { table } = req.body;

@@ -1,35 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import { createClient } from '@supabase/supabase-js';
 import { encrypt, decrypt, isEncrypted } from '@/lib/encryption';
-
-// CORS заголовки
-function setCorsHeaders(res: NextApiResponse, origin: string | undefined) {
-  const allowedOrigins = [
-    'https://ai-sql-advisor.vercel.app',
-    'http://localhost:3000',
-    'http://localhost:3001'
-  ];
-  
-  const originHeader = origin && allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
-  
-  res.setHeader('Access-Control-Allow-Origin', originHeader);
-  res.setHeader('Access-Control-Allow-Methods', 'POST, GET, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-}
-
-// Извлечение user_id из JWT токена
-function getUserIdFromJWT(jwt: string | null): string | null {
-  if (!jwt) return null;
-  try {
-    const parts = jwt.split(".");
-    if (parts.length !== 3) return null;
-    const payloadBase64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(Buffer.from(payloadBase64, 'base64').toString('utf-8'));
-    return payload?.sub ?? null;
-  } catch {
-    return null;
-  }
-}
+import { securityMiddleware } from '@/lib/middleware';
+import { getJWTFromRequest } from '@/lib/auth';
 
 // Определение типа БД из connection string
 function detectDbType(connectionString: string): string {
@@ -63,20 +36,18 @@ function parseConnectionString(connectionString: string): { host?: string; datab
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const origin = req.headers.origin;
-  setCorsHeaders(res, origin);
-  
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
+  // Используем security middleware для CORS и авторизации
+  const { authorized, userId } = await securityMiddleware(req, res, {
+    requireAuth: true,
+    requireSubscription: 'free', // Минимальный план для сохранения подключений
+    allowedMethods: ['GET', 'POST', 'DELETE', 'OPTIONS']
+  });
+
+  if (!authorized || !userId) {
+    return; // Ответ уже отправлен middleware
   }
 
-  const authHeader = req.headers.authorization;
-  const jwt = authHeader?.replace(/^Bearer /i, '') || null;
-  const userId = getUserIdFromJWT(jwt);
-
-  if (!userId) {
-    return res.status(401).json({ error: "Не авторизован" });
-  }
+  const jwt = getJWTFromRequest(req);
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim().replace(/\s+/g, '');

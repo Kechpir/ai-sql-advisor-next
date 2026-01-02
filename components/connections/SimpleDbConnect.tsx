@@ -31,6 +31,7 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
     dialect: "postgres",
   });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // Загружаем сохранённые соединения из Supabase
   useEffect(() => {
@@ -590,6 +591,7 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
           Система автоматически определит тип БД и исправит connection string для оптимальной работы.
         </div>
         <input
+          data-tour="connection-string"
           placeholder="postgresql://user:password@host:port/database"
           style={{ width: "100%", marginBottom: "0.5rem" }}
           onPaste={async (e) => {
@@ -623,11 +625,13 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
         <input
+          data-tour="connection-name"
           placeholder="Имя подключения"
           value={newConn.name}
           onChange={(e) => setNewConn({ ...newConn, name: e.target.value })}
         />
         <select
+          data-tour="connection-type"
           value={newConn.dialect}
           onChange={(e) => {
             const selectedDialect = e.target.value;
@@ -647,38 +651,79 @@ export default function SimpleDbConnect({ onLoaded, onToast, onConnectionString 
         </select>
 
         <input
+          data-tour="connection-host"
           placeholder="Хост"
           value={newConn.host}
           onChange={(e) => setNewConn({ ...newConn, host: e.target.value })}
         />
         <input
+          data-tour="connection-port"
           placeholder="Порт"
           value={newConn.port}
           onChange={(e) => setNewConn({ ...newConn, port: e.target.value })}
         />
 
         <input
+          data-tour="connection-database"
           placeholder="База данных"
           value={newConn.database}
           onChange={(e) => setNewConn({ ...newConn, database: e.target.value })}
         />
         <input
+          data-tour="connection-user"
           placeholder="Пользователь"
           value={newConn.user}
           onChange={(e) => setNewConn({ ...newConn, user: e.target.value })}
         />
 
-        <input
-          type="password"
-          placeholder="Пароль"
-          value={newConn.password}
-          onChange={(e) => setNewConn({ ...newConn, password: e.target.value })}
-        />
+        <div style={{ position: "relative", width: "100%" }}>
+          <input
+            data-tour="connection-password"
+            type={showPassword ? "text" : "password"}
+            placeholder="Пароль"
+            value={newConn.password}
+            onChange={(e) => setNewConn({ ...newConn, password: e.target.value })}
+            style={{ width: "100%", paddingRight: "40px" }}
+          />
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            style={{
+              position: "absolute",
+              right: "8px",
+              top: "50%",
+              transform: "translateY(-50%)",
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              padding: "4px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              color: "#888",
+              fontSize: "18px",
+            }}
+            title={showPassword ? "Скрыть пароль" : "Показать пароль"}
+          >
+            {showPassword ? "👁️" : "👁️‍🗨️"}
+          </button>
+        </div>
         <div style={{ display: "flex", gap: "0.5rem" }}>
-          <button className="btn btn-main" onClick={() => connect(newConn)} disabled={loading} style={{ flex: 1 }}>
+          <button 
+            data-tour="load-schema"
+            className="btn btn-main" 
+            onClick={() => connect(newConn)} 
+            disabled={loading} 
+            style={{ flex: 1 }}
+          >
             {loading ? "⏳..." : "🔌 Подключить"}
           </button>
-          <button className="btn btn-sec" onClick={handleAdd} disabled={loading}>
+          <button 
+            data-tour="connection-save"
+            className="btn btn-sec" 
+            onClick={handleAdd} 
+            disabled={loading}
+          >
             💾 Сохранить
           </button>
         </div>
